@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Icon preview — Known World Atlas</title>
+    <style>
+      :root {
+        --sea: oklch(16% 0.012 250);
+        --land: oklch(23% 0.008 250);
+        --ink: oklch(93% 0.004 250);
+        --ink-muted: oklch(70% 0.006 250);
+        --brass: oklch(78% 0.085 85);
+        --rule: oklch(30% 0.010 250);
+        font-family: ui-sans-serif, system-ui, sans-serif;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        padding: 3rem 2rem;
+        background: var(--sea);
+        color: var(--ink);
+      }
+      h1 { font-size: 1.5rem; font-weight: 300; margin: 0 0 0.5rem; }
+      .lede {
+        margin: 0 0 3rem;
+        max-width: 60ch;
+        color: var(--ink-muted);
+        font-size: 0.9375rem;
+        line-height: 1.6;
+      }
+      code {
+        font-family: ui-monospace, monospace;
+        font-size: 0.875em;
+        color: var(--brass);
+      }
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+        gap: 2.5rem 1.5rem;
+        max-width: 68rem;
+      }
+      .icon { text-align: center; }
+      /* The size it actually renders at on the map, and a large reference. */
+      .sizes {
+        display: flex;
+        align-items: flex-end;
+        justify-content: center;
+        gap: 1.25rem;
+        background: var(--land);
+        border: 1px solid var(--rule);
+        border-radius: 3px;
+        padding: 1.25rem 0.75rem;
+        margin-bottom: 0.75rem;
+      }
+      .sizes svg { color: var(--ink-muted); display: block; }
+      .sizes .lg { color: var(--ink); }
+      .sizes .sel { color: var(--brass); }
+      .name {
+        font-size: 0.8125rem;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: var(--ink-muted);
+      }
+      .hint { font-size: 0.6875rem; color: var(--ink-muted); opacity: 0.7; }
+    </style>
+  </head>
+  <body>
+    <h1>Settlement icons</h1>
+    <p class="lede">
+      Each icon at map size (14px), a larger reference (40px), and the selected
+      state in brass. Edit <code>ICONS</code> in <code>src/icons.ts</code> and
+      reload — this page reads the same definitions, so what you see here is
+      what the map draws.
+    </p>
+    <div class="grid" id="grid"></div>
+
+    <script type="module">
+      // Pull the real definitions rather than duplicating them.
+      const ICONS = (await import('/src/icons.ts')).__ICONS;
+
+      const draw = (name, px, cls) => {
+        const { d, fill } = ICONS[name];
+        const paint = fill
+          ? 'fill="currentColor" stroke="currentColor" stroke-width="2.25"'
+          : 'fill="none" stroke="currentColor" stroke-width="2.25"';
+        return `<svg class="${cls}" width="${px}" height="${px}" viewBox="0 0 24 24" stroke-linejoin="round"><path d="${d}" ${paint}/></svg>`;
+      };
+
+      document.querySelector('#grid').innerHTML = Object.keys(ICONS)
+        .map(
+          (name) => `
+            <div class="icon">
+              <div class="sizes">
+                ${draw(name, 14, '')}
+                ${draw(name, 40, 'lg')}
+                ${draw(name, 24, 'sel')}
+              </div>
+              <div class="name">${name}</div>
+              <div class="hint">14px · 40px · selected</div>
+            </div>`,
+        )
+        .join('');
+    </script>
+  </body>
+</html>

@@ -1,0 +1,40 @@
+{
+  "_comment": [
+    "Hand-authored places absent from the upstream dataset.",
+    "",
+    "Upstream (Tear -> theMountainGoat -> cadaei, CC BY-NC-SA 3.0) is the source",
+    "of record for everything else; this file is our own editorial addition and",
+    "is merged in by scripts/prepare-data.mjs. Keep it small and justify each",
+    "entry — the map's authority rests on not inventing things.",
+    "",
+    "Coordinates are in the upstream system (roughly African latitudes, chosen",
+    "by cadaei to keep Mercator distortion sane). Verify any new point falls",
+    "inside both the landmass and its intended region before committing."
+  ],
+  "places": [
+    {
+      "name": "Casterly Rock",
+      "type": "Castle",
+      "coordinates": [7.05, 6.15],
+      "note": "Seat of House Lannister, absent from the source dataset. Placed on the coast north of Lannisport, the harbour city the Rock stands above. Position is approximate."
+    },
+    {
+      "name": "High Tide",
+      "type": "Castle",
+      "coordinates": [23.74, 6.74],
+      "note": "Seat of House Velaryon on Driftmark, built by the Sea Snake. The source dataset predates House of the Dragon and has no Driftmark settlements; placed on the island's north coast, above the water. Position is approximate."
+    },
+    {
+      "name": "Spicetown",
+      "type": "Town",
+      "coordinates": [23.36, 6.56],
+      "note": "Velaryon port on Driftmark, raised on the wealth of the Sea Snake's voyages and later sacked. Absent from the source dataset; placed on the island's western end. Position is approximate."
+    },
+    {
+      "name": "Hull",
+      "type": "Town",
+      "coordinates": [23.88, 6.56],
+      "note": "The elder of Driftmark's two ports. Absent from the source dataset; placed on the island's eastern end, apart from Spicetown. Position is approximate."
+    }
+  ]
+}

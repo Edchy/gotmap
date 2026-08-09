@@ -1,0 +1,301 @@
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#app {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--sea);
+  color: var(--ink);
+  font: var(--text-body);
+  -webkit-font-smoothing: antialiased;
+  overflow: hidden;
+}
+
+#map {
+  position: absolute;
+  inset: 0;
+  z-index: var(--z-map);
+}
+
+:where(a, button):focus-visible {
+  outline: 2px solid var(--brass);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+/* ------------------------------------------------------------ masthead --- */
+/* Editorial: a title set in the corner like a plate, not a nav bar. */
+
+.masthead {
+  position: absolute;
+  top: var(--sp-5);
+  left: var(--sp-5);
+  z-index: var(--z-chrome);
+  pointer-events: none;
+}
+
+.masthead h1 {
+  margin: 0;
+  font: var(--text-display);
+  letter-spacing: -0.02em;
+  text-wrap: balance;
+}
+
+.masthead p {
+  margin: var(--sp-1) 0 0;
+  font: var(--text-micro);
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--ink-muted);
+}
+
+/* ---------------------------------------------------------------- hint --- */
+
+.hint {
+  position: absolute;
+  bottom: var(--sp-6);
+  left: 50%;
+  translate: -50% 0;
+  z-index: var(--z-chrome);
+  font: var(--text-label);
+  color: var(--ink-muted);
+  letter-spacing: 0.04em;
+  opacity: 0;
+  transition: opacity var(--dur-slow) var(--ease-out);
+  pointer-events: none;
+}
+
+.hint.is-visible {
+  opacity: 1;
+}
+
+/* --------------------------------------------------------------- panel --- */
+
+.panel {
+  position: absolute;
+  top: var(--sp-5);
+  right: var(--sp-5);
+  z-index: var(--z-panel);
+  width: min(21rem, calc(100vw - 3rem));
+  padding: var(--sp-5);
+  background: color-mix(in oklab, var(--sea-deep) 92%, transparent);
+  border: 1px solid var(--rule-soft);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-panel);
+  opacity: 0;
+  translate: 0 -6px;
+  transition:
+    opacity var(--dur) var(--ease-out),
+    translate var(--dur) var(--ease-out);
+}
+
+.panel.is-open {
+  opacity: 1;
+  translate: 0 0;
+}
+
+.panel__close {
+  position: absolute;
+  top: var(--sp-3);
+  right: var(--sp-3);
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  background: none;
+  border: 0;
+  border-radius: 2px;
+  color: var(--ink-muted);
+  cursor: pointer;
+  transition: color var(--dur-fast) var(--ease-out);
+}
+
+.panel__close:hover {
+  color: var(--ink);
+}
+
+.panel__kicker {
+  margin: 0 0 var(--sp-2);
+  font: var(--text-micro);
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--brass);
+}
+
+.panel__title {
+  margin: 0 0 var(--sp-4);
+  font: var(--text-display);
+  font-size: 1.5rem;
+  letter-spacing: -0.015em;
+  text-wrap: balance;
+  padding-right: var(--sp-5);
+}
+
+/* Facts as a definition list with hairline rules — no cards. */
+.facts {
+  margin: 0;
+  border-top: 1px solid var(--rule-soft);
+}
+
+.facts > div {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--sp-4);
+  padding: var(--sp-3) 0;
+  border-bottom: 1px solid var(--rule-soft);
+}
+
+.facts dt {
+  font: var(--text-label);
+  color: var(--ink-muted);
+}
+
+.facts dd {
+  margin: 0;
+  font: var(--text-label);
+  text-align: right;
+}
+
+/* Provenance note for hand-placed points. Quiet, but present. */
+.panel__note {
+  margin: var(--sp-4) 0 0;
+  font-size: 0.75rem;
+  line-height: 1.55;
+  color: var(--ink-muted);
+  text-wrap: pretty;
+}
+
+.listing {
+  margin-top: var(--sp-5);
+}
+
+.listing h3 {
+  margin: 0 0 var(--sp-2);
+  font: var(--text-micro);
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--ink-muted);
+}
+
+.listing ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.listing li {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--sp-4);
+  padding: var(--sp-2) 0;
+  font: var(--text-label);
+}
+
+.listing em {
+  font-style: normal;
+  color: var(--ink-muted);
+  font-size: 0.75rem;
+}
+
+/* ----------------------------------------------------------- colophon --- */
+
+.colophon {
+  position: absolute;
+  bottom: var(--sp-4);
+  left: var(--sp-5);
+  z-index: var(--z-chrome);
+  max-width: 30rem;
+}
+
+.colophon p {
+  margin: 0;
+  font-size: 0.6875rem;
+  line-height: 1.5;
+  color: var(--ink-faint);
+}
+
+.colophon span {
+  color: var(--ink-muted);
+}
+
+.colophon a {
+  color: var(--ink-muted);
+  text-decoration-color: var(--rule);
+  text-underline-offset: 2px;
+}
+
+.colophon a:hover {
+  color: var(--brass);
+}
+
+/* ------------------------------------------------------- map controls --- */
+/* Strip the stock provider chrome; rebuild it in the system's own terms. */
+
+.maplibregl-ctrl-group {
+  background: color-mix(in oklab, var(--sea-deep) 92%, transparent);
+  border: 1px solid var(--rule-soft);
+  border-radius: var(--radius);
+  box-shadow: none;
+}
+
+.maplibregl-ctrl-group button + button {
+  border-top: 1px solid var(--rule-soft);
+}
+
+.maplibregl-ctrl-group button {
+  width: 30px;
+  height: 30px;
+  background: none;
+}
+
+.maplibregl-ctrl-group button .maplibregl-ctrl-icon {
+  filter: invert(1) opacity(0.55);
+}
+
+.maplibregl-ctrl-group button:hover {
+  background: color-mix(in oklab, var(--land) 60%, transparent);
+}
+
+.maplibregl-ctrl-group button:hover .maplibregl-ctrl-icon {
+  filter: invert(1) opacity(0.85);
+}
+
+.maplibregl-ctrl-bottom-right {
+  margin: 0 var(--sp-5) var(--sp-5) 0;
+}
+
+/* ---------------------------------------------------------- responsive --- */
+
+@media (max-width: 40rem) {
+  .masthead {
+    top: var(--sp-4);
+    left: var(--sp-4);
+  }
+
+  .panel {
+    top: auto;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    width: 100%;
+    max-height: 62vh;
+    overflow-y: auto;
+    border-radius: var(--radius) var(--radius) 0 0;
+    border-bottom: 0;
+    translate: 0 8px;
+  }
+
+  .colophon {
+    display: none;
+  }
+
+}
