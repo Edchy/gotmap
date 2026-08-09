@@ -3,109 +3,217 @@
 An interactive atlas of Westeros. Dark-ground, editorial, built for someone who
 paused an episode and wants to know where a place is.
 
-This is the **first vertical slice**: Westeros only, region polygons and
-settlements, styled for real. See `PRODUCT.md` for who it's for, `DESIGN.md`
-for the visual system, and `ROADMAP.md` for what's next.
+See `PRODUCT.md` for who it's for, `DESIGN.md` for the visual system, and
+`ROADMAP.md` for what's next and why some things were harder than they looked.
 
 ## Running it
 
 ```bash
 npm install
-npm run data     # fetch and prepare the GeoJSON (already committed)
-npm run dev
+npm run dev          # http://localhost:5173
 ```
 
-`npm run build` typechecks and produces `dist/`. `npm run preview` serves it.
+| Script | What it does |
+| --- | --- |
+| `npm run dev` | Vite dev server with HMR |
+| `npm run build` | Validates the style, typechecks, builds to `dist/` |
+| `npm run preview` | Serves the built `dist/` |
+| `npm run check` | Validates the MapLibre style on its own |
+| `npm run data` | Re-fetches and re-prepares `public/data/` from upstream |
+| `npm run glyphs` | Regenerates the SDF glyphs from `assets/fonts/` |
 
-## What's here
+`npm run data` and `npm run glyphs` are **not** part of the build. Their output
+is committed, so a clone runs with `npm install && npm run dev`. Re-run them
+only when the upstream data or the fonts change.
+
+## Tools
+
+Deliberately few. There is no framework, no state library, no CSS pipeline, and
+nothing is fetched from a CDN at runtime.
+
+| | |
+| --- | --- |
+| **[MapLibre GL JS](https://maplibre.org/) 5** | Map rendering. Open-source, no API key, no tile-server account. |
+| **[Vite](https://vite.dev/) 8** | Dev server and bundler. |
+| **TypeScript 7** | `tsc --noEmit` typechecks as part of the build; Vite does the transpiling. |
+| **[fontnik](https://github.com/mapbox/fontnik)** | Build-time only. Turns Inter TTFs into the SDF glyph PBFs MapLibre needs. |
+| **[Inter](https://rsms.me/inter/)** | The single typeface, self-hosted. |
+
+The whole UI is one `innerHTML` template and a few event handlers in
+`src/main.ts`. At this size a framework would cost more than it returns.
+
+## How it fits together
+
+```
+ upstream GeoJSON (GitHub, fetched once)
+          │
+          │  npm run data  →  scripts/prepare-data.mjs
+          │                   filter to Westeros, normalise, derive labels
+          ▼
+ public/data/*.geojson  (10 files, committed)
+          │
+          ▼
+ src/map-style.ts  ──────────────►  MapLibre style object
+     builds 10 sources                (23 layers, ordered back to front)
+     and 23 layers                             │
+          ▲                                    ▼
+          │                            src/main.ts
+ src/palette.ts                        constructs the map, wires
+     OKLCH tokens ──► src/color.ts     hover / click / panel
+                      OKLCH → hex
+```
+
+### The files
 
 | Path | What it is |
 | --- | --- |
-| `scripts/prepare-data.mjs` | Fetches upstream GeoJSON, filters to Westeros, normalises properties |
-| `scripts/build-glyphs.mjs` | Generates the Inter SDF glyph files (run once; output committed) |
-| `data/additions.json` | Hand-placed points absent from upstream — currently just Casterly Rock |
-| `src/icons.ts` | Settlement icons as SDF images; preview them at `/icons.html` |
-| `src/palette.ts` | The colour palette in OKLCH — single source of truth |
-| `src/map-style.ts` | MapLibre style: sea, land, region fills, coastline |
-| `src/main.ts` | Map setup, markers, selection, panel |
-| `src/tokens.css` | Type, space and motion tokens (colours come from `palette.ts`) |
+| `scripts/prepare-data.mjs` | Fetches 7 upstream layers, writes the 10 prepared files. All the geometry work lives here — bbox filtering, label anchors, region assignment. |
+| `scripts/build-glyphs.mjs` | Inter TTF → SDF glyph PBFs. Run once; output committed. |
+| `scripts/validate-style.mjs` | Validates the built style against the MapLibre spec. Wired into `npm run build`. |
+| `data/additions.json` | Hand-placed points absent upstream (Casterly Rock, High Tide, Spicetown, Hull). |
+| `src/palette.ts` | Every colour, in OKLCH. Single source of truth, projected onto `:root` at startup. |
+| `src/color.ts` | OKLCH → hex, because MapLibre's validator predates CSS Color 4. |
+| `src/map-style.ts` | The whole map style: sources, layers, and every zoom/collision expression. |
+| `src/icons.ts` | Settlement marks rasterised to SDF images. Preview at `/icons.html`. |
+| `src/main.ts` | Map construction, region/place interaction, the detail panel. |
+| `src/tokens.css` | Type, space and motion tokens. Colour comes from `palette.ts`. |
+| `src/app.css` | Layout for the masthead, panel and colophon. |
+
+### Layer order
+
+Order is load-bearing — several bugs have been ordering mistakes. Back to
+front:
+
+```
+sea → neighbour-{shelf,land,coast} → land-shelf → island-shelf
+    → land → island → region-fill → region-edge
+    → lake → lake-edge → river
+    → lake-island → lake-island-tint → lake-island-coast
+    → coast → island-coast
+    → sea-label → island-label → region-label → place-dot → place-label
+```
+
+Two of those need explaining. **Inland water sits above the region tints**, so
+a river is water rather than a tinted river. **The Isle of Faces is drawn three
+times** — fill, tint, coastline — after the lake, because God's Eye has no hole
+punched for it upstream and would otherwise paint straight over the island.
+
+### Reveal by zoom
+
+The map introduces itself in three beats, so nothing competes with the step
+before it:
+
+| Zoom | On screen |
+| --- | --- |
+| 2.7 – 3.4 | Land, region colours, water. **No labels.** |
+| 3.4 – 3.9 | Region names, alone |
+| 3.9 – 4.4 | Cities join |
+| 4.4 → 5.8 | Towns, then castles, then everything |
+
+Region names then fade back at z7 (`REGION_LABEL_OPACITY`) once the settlements
+are the real subject.
+
+## Map data
+
+### Where it comes from
+
+Fan-made Westeros GIS files: **Tear** (Cartographer's Guild) →
+**theMountainGoat** (2012) → **cadaei** (QGIS shapefiles), obtained via
+[mapbox/GOT-Inspired-Map](https://github.com/mapbox/GOT-Inspired-Map).
+
+`scripts/prepare-data.mjs` fetches seven layers over HTTP at prepare time:
+
+| Upstream | Becomes | Notes |
+| --- | --- | --- |
+| `got_continents` | `westeros`, `neighbours` | Westeros; Essos + Sothoryos kept separate |
+| `got_politcal` | `regions`, `region-labels` | Misspelled upstream — that is the real filename |
+| `got_locations` | `places` | 205 features, 151 confirmed |
+| `got_islands` | `islands`, `island-labels` | 33 features, 25 labelled |
+| `got_regions` | `sea-labels` | 56 features; the 28 `water` ones yield 15 usable seas |
+| `got_rivers` | `rivers` | 46 in frame, 21 named |
+| `got_lakes` | `lakes` | 11 in frame, 3 named |
+
+The prepare script prints a summary of every layer on each run, plus what it
+added by hand and which expected places are still missing.
+
+### Things the upstream data does not say
+
+Worth knowing before you trust a field:
+
+- **`size` on rivers is null on 73 of 74 features.** The advertised width
+  hierarchy does not exist; width is derived from line length instead.
+- **`type: 'water'` in `got_regions` includes headlands and island groups** —
+  Cape Kraken, Massey's Hook, The Fingers, the Iron Islands. Filtered by name,
+  or the map labels a cape as if it were a sea.
+- **Lake polygons have no holes for their islands.** Hence the Isle of Faces
+  being redrawn above God's Eye.
+- **One political feature has a null name** (the wildling lands) and one
+  location has none (dropped — an unnamed point cannot be labelled or found).
+
+### Our own additions
+
+Four places are absent upstream and hand-placed in `data/additions.json`:
+Casterly Rock, High Tide, Spicetown, Hull.
+
+Anything added this way carries `added: true` and shows **"Placement:
+Approximate"** in the UI with a note on where the position came from, rather
+than being presented as cadaei's work. Keep that distinction if you add more —
+the map's authority rests on not quietly inventing things.
+
+### Scope
+
+The slice is Westeros. `WESTEROS_BBOX` extends east to 29.4 to take in the
+Stepstones, which straddle the Narrow Sea; Tyrosh falls inside that span, so
+the Free Cities are excluded by name (`ESSOS_PLACES`) rather than by geometry.
+
+Essos and Sothoryos are drawn as an unlabelled far shore, and are deliberately
+**outside the camera bounds**: Essos is 2.5× the width of Westeros, so framing
+both would shrink the subject to 0.72× and flip the map from tall to square.
+Pan east and they are there.
 
 ## Notes for the next session
 
 **Run `npm run check` when the style misbehaves.** An invalid MapLibre style
 fails *silently* — no layers register, nothing paints, no console error. The
-validator catches it in a second and runs as part of `npm run build`. It has
-already caught two real bugs.
+validator catches it in a second and runs as part of `npm run build`.
+
+**A blank map in an automated browser is probably not a bug.** Chrome throttles
+`requestAnimationFrame` to zero frames in a hidden tab, and MapLibre completes
+style load on the render loop — so `style.load` never fires and the map stays
+empty with no error. Drive a foreground tab, or pump frames manually. This
+previously cost a whole debugging session and a `setTimeout` workaround that
+was itself the bug.
 
 **`['zoom']` is heavily restricted.** It may only appear as the direct input to
-a top-level `step` or `interpolate`. Not inside a layer `filter` (those are
+a top-level `step` or `interpolate` — not inside a layer `filter` (those are
 evaluated per tile, not per frame), and not buried inside arithmetic. Both
-mistakes invalidate the entire style with no warning. Where a zoom-dependent
+mistakes invalidate the whole style with no warning. Where a zoom-dependent
 value needs per-feature maths, make `interpolate` the outer expression and put
-the constants in the stops — see `ISLAND_LABEL_OFFSET`.
-
-Three more things that are non-obvious and cost time to work out:
+the constants in the stops; see `ISLAND_LABEL_OFFSET`.
 
 **`maxBounds` silently breaks `fitBounds`.** MapLibre refuses any camera that
-would reveal area outside `maxBounds`, which pins the zoom and makes
-`fitBounds` a no-op with no warning. Don't reintroduce it without checking the
-fit still works.
+would reveal area outside it, which pins the zoom and makes `fitBounds` a
+no-op. Don't reintroduce it without checking the fit still works.
 
-**Colours live in TypeScript, not CSS.** The map style needs token values at
+**Colours live in TypeScript, not CSS.** The style needs token values at
 module-evaluation time, and Vite injects imported CSS asynchronously — reading
 custom properties during construction returns empty strings and MapLibre
 rejects the style without a useful error. `palette.ts` owns the values and
 projects them onto `:root`.
 
-**MapLibre's style validator predates CSS Color 4.** It rejects `oklch(...)`
-outright, so `src/color.ts` converts to hex at style-build time.
+**MapLibre's style validator predates CSS Color 4.** It rejects `oklch(...)`,
+so `src/color.ts` converts to hex at style-build time.
 
-Also worth knowing: place labels are DOM markers rather than symbol layers, so
-there's no glyph server and no font network dependency. That's fine at ~150
-labels; it will not scale to thousands, and switching to symbol layers means
-bundling PBF fonts.
+**Colour is tuned on adjacent pairs, not in isolation.** Region tints that look
+fine alone were 3–9 apart in RGB where they shared a border, which is below the
+threshold where two colours read as different. Raising chroma alone does not
+fix it — the hues have to move too. See `ROADMAP.md`.
 
-## Data
+## Licence
 
-Map data derives from the fan-made Westeros GIS files: **Tear** (Cartographer's
-Guild) → **theMountainGoat** (2012) → **cadaei** (QGIS shapefiles), obtained via
-[mapbox/GOT-Inspired-Map](https://github.com/mapbox/GOT-Inspired-Map).
+Code is MIT. The map data in `public/data/` is a derivative of the upstream GIS
+files and stays **CC BY-NC-SA 3.0** — non-commercial, attribution required,
+share-alike. Fonts are SIL OFL 1.1. The world is © George R. R. Martin.
 
-Licensed **CC BY-NC-SA 3.0** — non-commercial only, attribution required, and
-derivative data must carry the same licence. The world is © George R. R.
-Martin. This is a fan project.
-
-### Our own additions
-
-`Casterly Rock` is absent from the upstream dataset entirely — there's no
-better source to switch to, so it's hand-placed in `data/additions.json` and
-merged during preparation.
-
-Anything added this way carries `added: true` and shows **"Placement:
-Approximate"** in the UI with a note explaining where the position came from,
-rather than being presented as though it were cadaei's work. Keep that
-distinction if you add more: the map's authority rests on not quietly
-inventing things.
-
-The prepare script prints what it added and what's still missing on every run.
-
-### Islands
-
-Islands are a separate upstream layer (`got_islands.geojson`) and carry names
-the locations layer lacks — Driftmark, Claw Isle, the Stepstones, Bear Island,
-Tarth. Without it, Dragonstone rendered as a label floating in open sea.
-
-The east edge of `WESTEROS_BBOX` sits at 29.4 to include the Stepstones, which
-straddle the Narrow Sea. Tyrosh falls inside that span, so the Free Cities are
-excluded by name (`ESSOS_PLACES`) rather than by geometry.
-
-**Known gap:** islands are not tinted by the region that claims them, so
-Dragonstone and Driftmark read as unclaimed even though both are Crownlands.
-Fixing it means running the same point-in-polygon assignment used for places
-and adding a `claimedBy` to each island.
-
-## Not built yet
-
-Deliberately out of scope for this slice: Essos, rivers/roads/lakes, search,
-deep links, the timeline and spoiler control. The spoiler control matters most
-— it's the safety mechanism for the mid-episode viewer, per `PRODUCT.md`.
+Free to publish and share; not to sell. Keep the on-screen colophon intact — it
+is how the attribution requirement is met. Full terms in `LICENSE`.
