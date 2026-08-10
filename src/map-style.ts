@@ -52,6 +52,17 @@ const LABEL_SIZE: ExpressionSpecification = [
   7, ['match', ['get', 'type'], 'City', 16, 'Town', 14, 12.5],
 ];
 
+/**
+ * Weight is driven by class alone, not by selection.
+ *
+ * Setting the selected name in SemiBold was tried and is not possible:
+ * `text-font` is a *layout* property, and MapLibre rejects `feature-state` in
+ * layout properties outright ("not supported with layout properties") — they
+ * are computed once at tile-build time, while feature state changes per
+ * frame. Same underlying reason as the filter restriction. Only `paint`
+ * properties can react to selection, so the highlight is carried by colour
+ * and halo instead. See README.
+ */
 const LABEL_FONT: ExpressionSpecification = [
   'match',
   ['get', 'type'],
@@ -72,6 +83,16 @@ const LABEL_COLOR: ExpressionSpecification = [
  * than letting them overlap. `symbol-sort-key` makes that priority explicit —
  * lower sorts first and wins, so cities survive where ruins are dropped.
  */
+/**
+ * Lower sorts first, and first placed wins a collision.
+ *
+ * Promoting the *selected* label to the front of the queue was tried and is
+ * not possible: `symbol-sort-key` is a layout property, and feature state
+ * cannot reach those (see LABEL_FONT). Collision priority is therefore fixed
+ * at tile-build time and a selected label competes on equal terms with its
+ * neighbours — which is survivable because the panel names the place in text
+ * regardless of whether its map label wins.
+ */
 const LABEL_SORT: ExpressionSpecification = ['-', 5, ['get', 'rank']];
 
 /**
@@ -83,6 +104,38 @@ const LABEL_SORT: ExpressionSpecification = ['-', 5, ['get', 'rank']];
  * which is exactly what a zoom-dependent reveal needs, and it fades rather
  * than popping.
  */
+/**
+ * Speculative placements stay hidden; the map shouldn't present guesses.
+ *
+ * The one exception is a place the reader has deliberately asked for by name.
+ * Search covers all 205 places, so a hit on a speculative one has to be
+ * visible when the camera arrives — flying to an empty patch of land would
+ * read as a broken search. Selection is the narrowest possible escape hatch:
+ * it admits exactly one point at a time, only ever by explicit request, and
+ * the panel simultaneously labels it "Placement: Speculative". The map still
+ * never volunteers a guess on its own.
+ *
+ * This wraps each *stop* of the reveal ladder below, which is the only place
+ * it can go. It cannot be a `filter`: MapLibre rejects `feature-state` there
+ * outright ("feature-state data expressions are not supported with filters"),
+ * since filters are evaluated per tile while feature-state changes per frame.
+ * And it cannot wrap `REVEAL_AT_ZOOM` from outside, because multiplying the
+ * two buries `['zoom']` inside a `*` — the other documented restriction (see
+ * README). `step` stays the outer expression; the per-feature test rides in
+ * its stop values, as ISLAND_LABEL_OFFSET does.
+ *
+ * Living in the stops also preserves the reveal order: a selected speculative
+ * place appears, but never earlier than its type would have shown it anyway.
+ */
+const visible = (
+  typeTest: ExpressionSpecification | number,
+): ExpressionSpecification => [
+  'case',
+  ['get', 'confirmed'], typeTest,
+  ['boolean', ['feature-state', 'selected'], false], typeTest,
+  0,
+];
+
 const REVEAL_AT_ZOOM: ExpressionSpecification = [
   'step',
   ['zoom'],
@@ -97,15 +150,12 @@ const REVEAL_AT_ZOOM: ExpressionSpecification = [
    * REGION_LABEL_OPACITY); cities arrive just after.
    */
   0,
-  3.9, ['match', ['get', 'type'], 'City', 1, 0],
-  4.4, ['match', ['get', 'type'], 'City', 1, 'Town', 1, 0],
-  4.9, ['match', ['get', 'type'], 'City', 1, 'Town', 1, 'Castle', 1, 0],
-  5.4, ['match', ['get', 'type'], 'Other', 0, 1],
-  5.8, 1,
+  3.9, visible(['match', ['get', 'type'], 'City', 1, 0]),
+  4.4, visible(['match', ['get', 'type'], 'City', 1, 'Town', 1, 0]),
+  4.9, visible(['match', ['get', 'type'], 'City', 1, 'Town', 1, 'Castle', 1, 0]),
+  5.4, visible(['match', ['get', 'type'], 'Other', 0, 1]),
+  5.8, visible(1),
 ];
-
-/** Speculative placements stay hidden; the map shouldn't present guesses. */
-const CONFIRMED_ONLY: ExpressionSpecification = ['get', 'confirmed'];
 
 const ISLAND_LABEL_SIZE: ExpressionSpecification = [
   'interpolate',
@@ -619,14 +669,27 @@ export function buildStyle(): StyleSpecification {
           'text-radial-offset': ISLAND_LABEL_OFFSET,
           'text-justify': 'auto',
           // Islands yield to settlements: they are context, not the answer.
+          // (Promoting a selected island is not possible — layout properties
+          // cannot read feature state. See LABEL_SORT.)
           'symbol-sort-key': 10,
         },
         paint: {
           // ink-muted (7.3:1 on sea) rather than ink-faint (3.5:1): these are
           // real labels, so they clear AA even though they sit back visually.
-          'text-color': token('ink-muted'),
+          // Selection lifts to brass, matching the settlement labels — an
+          // island is searchable, so it needs the same "this is the one you
+          // asked for" cue rather than flying you to an unmarked shape.
+          'text-color': [
+            'case',
+            ['boolean', ['feature-state', 'selected'], false], token('brass'),
+            token('ink-muted'),
+          ],
           'text-halo-color': token('sea'),
-          'text-halo-width': 1.1,
+          'text-halo-width': [
+            'case',
+            ['boolean', ['feature-state', 'selected'], false], 2.2,
+            1.1,
+          ],
         },
       },
 
@@ -701,7 +764,6 @@ export function buildStyle(): StyleSpecification {
         id: 'place-dot',
         type: 'symbol',
         source: 'places',
-        filter: CONFIRMED_ONLY,
         layout: {
           'icon-image': [
             'match', ['get', 'type'],
@@ -745,7 +807,6 @@ export function buildStyle(): StyleSpecification {
         id: 'place-label',
         type: 'symbol',
         source: 'places',
-        filter: CONFIRMED_ONLY,
         layout: {
           'text-field': ['get', 'name'],
           'text-font': LABEL_FONT,
@@ -772,8 +833,21 @@ export function buildStyle(): StyleSpecification {
           'text-color': LABEL_COLOR,
           // The Halo Rule: every label carries a casing in the ground colour.
           'text-halo-color': token('sea'),
-          'text-halo-width': 1.2,
-          'text-halo-blur': 0.4,
+          // A wider, tighter casing on the selected name. The halo stays the
+          // *ground* colour rather than turning brass — a coloured halo reads
+          // as a glow and puts a data hue into what is really chrome. Widening
+          // it instead pushes the neighbours back and lets the name sit in its
+          // own clearing, which is what makes it findable in a dense field.
+          'text-halo-width': [
+            'case',
+            ['boolean', ['feature-state', 'selected'], false], 2.4,
+            1.2,
+          ],
+          'text-halo-blur': [
+            'case',
+            ['boolean', ['feature-state', 'selected'], false], 0.2,
+            0.4,
+          ],
           'text-opacity': REVEAL_AT_ZOOM,
         },
       },

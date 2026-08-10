@@ -20,8 +20,11 @@ const LAYERS = {
   political: 'got_politcal',
   locations: 'got_locations',
   islands: 'got_islands',
-  // Seas, bays and terrain. 56 features; only the 28 `water` ones are used
-  // for now (see ROADMAP.md section 1 — terrain is optional and adds noise).
+  // Seas, bays and terrain. 56 features; only the 28 `water` ones are used.
+  // The forest/mountain/shore features are deliberately left alone: there are
+  // only 7 forests and 4 ranges for the whole world, so drawing them asserts
+  // by omission that everywhere else is bare. Built once and reverted — see
+  // ROADMAP.md section 1 for the full finding before trying again.
   regions: 'got_regions',
   rivers: 'got_rivers',
   lakes: 'got_lakes',

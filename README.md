@@ -75,7 +75,7 @@ The whole UI is one `innerHTML` template and a few event handlers in
 | `src/color.ts` | OKLCH → hex, because MapLibre's validator predates CSS Color 4. |
 | `src/map-style.ts` | The whole map style: sources, layers, and every zoom/collision expression. |
 | `src/icons.ts` | Settlement marks rasterised to SDF images. Preview at `/icons.html`. |
-| `src/main.ts` | Map construction, region/place interaction, the detail panel. |
+| `src/main.ts` | Map construction, region/place interaction, the detail panel, search and deep links. |
 | `src/tokens.css` | Type, space and motion tokens. Colour comes from `palette.ts`. |
 | `src/app.css` | Layout for the masthead, panel and colophon. |
 
@@ -112,6 +112,29 @@ before it:
 
 Region names then fade back at z7 (`REGION_LABEL_OPACITY`) once the settlements
 are the real subject.
+
+## Finding things
+
+**Search** indexes 242 targets — 205 places, 12 regions, 25 islands — and ranks
+them in four tiers: exact, prefix, substring, then subsequence. Focus it with
+`/`, navigate with the arrow keys, `Enter` to go, `Escape` to dismiss.
+
+It covers all 205 places even though the map draws only the confirmed 151.
+Searching a real place and getting nothing reads as a broken search, so the
+distinction lives in the UI instead: results are flagged **Unconfirmed** and
+the panel says "Placement: Speculative". Selecting one reveals it on the map —
+the single exception to the confirmed-only rule, scoped to one point at a time
+and only ever by explicit request.
+
+**Deep links** carry the target and never the camera: `?place=kings-landing`,
+`?region=the-north`, `?island=bear-island`. Selecting anything rewrites the URL
+with `replaceState`, so browsing the map does not fill the back button. A link
+means the same thing to everyone who opens it, which encoding a camera position
+would not.
+
+Slugs delete apostrophes rather than folding them into the separator pass —
+`kings-landing`, not `king-s-landing`. Two upstream places are both called
+"Holdfast", so a clash takes a feature-id suffix (`holdfast-155`).
 
 ## Map data
 
@@ -190,6 +213,23 @@ evaluated per tile, not per frame), and not buried inside arithmetic. Both
 mistakes invalidate the whole style with no warning. Where a zoom-dependent
 value needs per-feature maths, make `interpolate` the outer expression and put
 the constants in the stops; see `ISLAND_LABEL_OFFSET`.
+
+**`feature-state` works in `paint` only — never in `layout` or `filter`.** Both
+are computed once when a tile is built, while feature state changes per frame,
+so MapLibre rejects the whole style. This rules out reacting to selection with
+`text-font`, `symbol-sort-key`, `text-allow-overlap`, `icon-image` or any other
+layout property: a selected label cannot be re-weighted, promoted ahead of its
+neighbours in the collision queue, or exempted from collision. Selection
+highlighting has to be carried by paint properties alone — colour, halo,
+opacity. All three restrictions (`['zoom']`, filters, layout) are the same
+underlying split between per-tile and per-frame evaluation.
+
+**`setFeatureState` throws if the style is not loaded.** Not a warning — an
+exception, which aborts whatever called it. Clicks never hit this because you
+can only click a map you can already see, but search and deep links fire on the
+user's schedule and the URL's, so both need a guard. `goTo` defers itself to
+`map.once('idle')` and `setFeatureState` is wrapped in an `isStyleLoaded()`
+check; losing a highlight is harmless, losing the navigation is not.
 
 **`maxBounds` silently breaks `fitBounds`.** MapLibre refuses any camera that
 would reveal area outside it, which pins the zoom and makes `fitBounds` a

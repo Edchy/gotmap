@@ -50,9 +50,37 @@ Most of this is already sitting in the upstream dataset, unused. These are
 - [ ] **Roads** — 21 features, 6 named. The Kingsroad is the one that matters.
 - [ ] **The Wall** — a single line feature, and it deserves its own treatment
       rather than being drawn as a road.
-- [ ] **Terrain regions** — the same layer also holds 7 forests (Kingswood,
-      Wolfswood, the Haunted Forest), 4 mountain ranges, 5 shores. Optional;
-      adds texture but also noise.
+- [~] **Terrain regions — tried, reverted. Do not retry from this dataset.**
+      The same layer holds 7 forests, 4 mountain ranges and 5 shores. Forests
+      were built end to end (prepared layer, `forest` token, fill below the
+      region tints, area-gated reveal) and then removed. Two reasons, and the
+      second is the one that matters:
+
+      *The rendering is fixable.* Tuned against bare land the fill read fine
+      and then all but vanished under a region tint at 0.42 — six forest/land
+      pairs collapsed from 11 RGB to 5-7, so the Wolfswood under the North
+      read as a rendering seam. Value fixes it (chroma does not); 31% put the
+      worst tinted pair at 16. Reusable if terrain ever returns.
+
+      *The coverage is not fixable.* Seven forest polygons exist for the whole
+      world, six in frame. There is no Karhold wood, nothing on Bear Island,
+      and the Wolfswood stops at a straight line well short of its real
+      extent. Compare any painted reference map, where forest is continuous
+      texture across the continent: these seven are not "the forests of
+      Westeros", they are the seven someone named and traced. Drawing them
+      asserts by omission that the northeast is bare, which the data never
+      claims and the source maps contradict. That cuts against the thing the
+      map's authority rests on.
+
+      The geometry is also too coarse to rescue with texture. These are
+      low-vertex convex blobs — the Wolfswood renders as a visible hexagon —
+      so tree glyphs would stop dead at a straight edge corresponding to
+      nothing. Stippling would emphasise the flaw, not hide it.
+
+      **Mountains and shores have the same defect** (4 ranges for all of
+      Westeros; only the Lonely Hills and Sheepshead Hills are anywhere near
+      the North), so they are struck from the list too rather than left
+      pending. Terrain needs a different dataset, not a different render.
 
 **Note on ordering:** seas are done and cost the map nothing — they sit in
 water that was empty. Rivers and roads are the real density test: they are
@@ -123,13 +151,66 @@ labelled from outside.
 
 ## 2. Finding things
 
-- [ ] **Search** — fuzzy match over ~150 place names plus 12 regions and 27
-      islands. Type "riverr", get Riverrun, fly there, open its panel. This is
-      the highest-value item on the list for the mid-episode viewer: "where is
-      X" is answered faster by typing than by hunting.
-- [ ] **Deep links** — `?place=winterfell` / `?region=the-north`, and a URL
-      that updates as you select. Makes the map shareable and survivable
-      across a reload.
+- [x] **Search** — 242 targets: 205 places, 12 regions, 25 islands. Ranked in
+      four tiers (exact, prefix, substring, subsequence) so "the north" cannot
+      lose to a castle whose letters happen to interleave.
+
+      **Search covers all 205 places; the map still draws only the confirmed
+      151.** "Summerhall returns nothing" reads as a broken search, not as
+      editorial restraint, so the distinction moved into the UI — results are
+      flagged `Unconfirmed` and the panel says "Placement: Speculative". A
+      selected speculative place is *revealed* on the map, which needed the
+      narrowest possible escape hatch in the style: not a `filter` (MapLibre
+      rejects `feature-state` there outright) and not a wrapper around
+      `REVEAL_AT_ZOOM` (that buries `['zoom']` inside a `*`, the other
+      documented restriction). The gate lives inside each stop of the reveal
+      ladder instead, which also keeps a revealed place from appearing earlier
+      than its type otherwise would.
+
+      **Word-boundary scoring is what makes acronyms work.** A plain
+      subsequence span ranked King's Landing *sixth* for "kl", behind Karhold,
+      whose k and l sit close together. Scoring characters matched at the
+      start of a word, and promoting a query whose every character lands on
+      one, puts it first.
+- [x] **Deep links** — `?place=winterfell` / `?region=the-north` /
+      `?island=bear-island`, written with `replaceState` on every selection.
+
+      **The URL carries the target, never the camera.** A shared link means
+      the same thing to everyone who opens it; encoding the camera would churn
+      the URL on every pan, write a history entry per gesture, and freeze one
+      person's window size into someone else's screen. Places land at a fixed
+      z5.6 (above the `Other` reveal at 5.4, so a link to a minor holdfast
+      cannot arrive before its own dot); regions fit their bounds instead,
+      because a region is an area.
+
+      **The searched name is highlighted on the map**, not just in the panel:
+      brass text plus a halo widened 1.2 → 2.4, which lets the name sit in its
+      own clearing in a dense field. Island labels got the same treatment —
+      they are searchable, and flying to an unmarked shape says nothing.
+      Measured, brass is 71–128 RGB from the neighbouring label colours and
+      holds 8.4–9.7:1 on both sea and land.
+
+      **The highlight cannot use weight or collision priority.** Setting the
+      selected label in SemiBold, sorting it to the front of the collision
+      queue, and exempting it from collision were all tried and all rejected:
+      `text-font`, `symbol-sort-key` and `text-allow-overlap` are *layout*
+      properties, and feature state cannot reach those (see README). So a
+      selected label still competes on equal terms with its neighbours and can
+      in principle be dropped — survivable only because the panel names the
+      place in text regardless.
+
+      **One `select()` owns all three selection kinds.** Each panel used to
+      clear the others by hand, which is how a stale highlight survives: miss
+      a line and a previously-selected island stays brass behind the
+      settlement you just picked. Verified exactly-one-selected across
+      place → island → region → place.
+
+      **Apostrophes must be deleted, not treated as separators.** Westeros is
+      full of them, and the obvious slugify yields `king-s-landing` — unique
+      and correct and something nobody would ever type. Two places are also
+      both called "Holdfast", so slugs are de-duplicated with a feature-id
+      suffix. Verified: all 242 targets round-trip name → slug → target, and
+      each surfaces itself as its own top search hit.
 - [ ] **Filters** — show only cities, only castles, castles + rivers, and so
       on. Cheap to implement (the layers are already type-driven) and it is
       the fastest way to cut density when the map gets busy.

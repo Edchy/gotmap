@@ -57,6 +57,130 @@ body {
   color: var(--ink-muted);
 }
 
+/* -------------------------------------------------------------- search --- */
+/*
+ * One field under the masthead, sharing the panel's surface so the two read as
+ * the same system. Chrome is guilty until proven necessary (PRODUCT.md): the
+ * field is quiet until focused, the result list exists only while typing, and
+ * there is no button, no icon and no permanent sidebar.
+ */
+
+.search {
+  position: absolute;
+  top: calc(var(--sp-5) + 4.5rem);
+  left: var(--sp-5);
+  z-index: var(--z-chrome);
+  width: min(17rem, calc(100vw - 3rem));
+}
+
+/* Visible to screen readers only: the placeholder carries the visual label. */
+.search__label {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.search__input {
+  width: 100%;
+  padding: var(--sp-2) var(--sp-3);
+  font: var(--text-label);
+  color: var(--ink);
+  /* Barely there at rest: the map is the subject, and an unused field should
+     not read as a filled box sitting on top of it. Weight arrives on focus. */
+  background: color-mix(in oklab, var(--sea-deep) 55%, transparent);
+  border: 1px solid var(--rule-soft);
+  border-radius: var(--radius);
+  transition:
+    border-color var(--dur) var(--ease-out),
+    background var(--dur) var(--ease-out);
+}
+
+/* The browser default is a system blue/orange that belongs to no palette here. */
+.search__input::selection {
+  background: color-mix(in oklab, var(--brass) 30%, transparent);
+  color: var(--ink);
+}
+
+.search__input::placeholder {
+  color: var(--ink-faint);
+}
+
+.search__input:hover {
+  border-color: var(--rule);
+}
+
+/* Brass is the single accent, and focus is where it earns its keep. */
+.search__input:focus-visible {
+  outline: none;
+  border-color: var(--brass-dim);
+  background: color-mix(in oklab, var(--sea-deep) 94%, transparent);
+}
+
+/* Safari shows its own clear affordance; the Escape key is the documented one. */
+.search__input::-webkit-search-cancel-button {
+  appearance: none;
+}
+
+.search__results {
+  margin: var(--sp-2) 0 0;
+  padding: 0;
+  list-style: none;
+  background: color-mix(in oklab, var(--sea-deep) 94%, transparent);
+  border: 1px solid var(--rule-soft);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-panel);
+  overflow: hidden;
+}
+
+.search__result {
+  display: flex;
+  gap: var(--sp-2);
+  align-items: baseline;
+  padding: var(--sp-2) var(--sp-3);
+  font: var(--text-label);
+  color: var(--ink-muted);
+  cursor: pointer;
+}
+
+.search__result + .search__result {
+  border-top: 1px solid var(--rule-soft);
+}
+
+.search__result span {
+  flex: 1;
+  color: var(--ink);
+}
+
+.search__result em {
+  font: var(--text-micro);
+  font-style: normal;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+
+/* Speculative placements are findable, but never presented as settled. */
+.search__result .search__flag {
+  color: var(--brass-dim);
+}
+
+.search__result.is-active,
+.search__result:hover {
+  background: color-mix(in oklab, var(--land-high) 60%, transparent);
+}
+
+@media (max-width: 40rem) {
+  /* The masthead stacks tighter on small screens; follow it down. */
+  .search {
+    top: calc(var(--sp-5) + 3.75rem);
+  }
+}
+
 /* ---------------------------------------------------------------- hint --- */
 
 .hint {
