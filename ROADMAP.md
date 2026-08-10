@@ -369,13 +369,34 @@ considerably.
 
 ## 4. Fixes and gaps
 
-- [ ] **Island region tinting** — Dragonstone and Driftmark render as
-      unclaimed land because islands are not assigned to a region. Needs the
-      same point-in-polygon pass the places use, plus a `claimedBy` per island.
-      The Isle of Faces is now a second caller: `lake-island-tint` hard-codes
-      the Riverlands tint purely because the islands source has no `claimedBy`.
-      Once it does, that layer collapses into the same `regionTint()` the
-      mainland uses.
+- [x] **Island region tinting** — islands now carry `region` and `claimedBy`,
+      resolved at prepare time, and a new `island-tint` layer paints them with
+      the same `regionTint()` the mainland uses. Dragonstone and Driftmark read
+      as Crownlands rather than as unclaimed ground in the Crownlands' own bay.
+
+      **Majority of vertices, not centroid.** The obvious approach gets Great
+      Wyk wrong. The region polygons are digitised to the *mainland*
+      coastline, so an island sits mostly in open water and only overlaps the
+      edge of the territory claiming it — every island here is roughly half
+      inside its own region. Great Wyk has 22 of 47 vertices inside the Iron
+      Islands and a centroid that lands just outside, so a centroid test hands
+      the Greyjoys' largest island to nobody. Counting vertices and taking the
+      plurality resolves 31 of 33.
+
+      **The two that resolve to nothing are correct.** The Stepstones are
+      famously contested and Grey Gallows lies beyond the map's politics;
+      neither has a claim to state. They omit `claimedBy` *entirely* rather
+      than carrying it as null — the style filters on `['has', 'claimedBy']`,
+      and a key present with a null value passes that test. They stay
+      untinted, which is the honest answer rather than a gap.
+
+      `lake-island-tint` collapsed as predicted: it hard-coded the Riverlands
+      tint only because the islands source had no `claimedBy`, and now reads
+      `regionTint()` like everything else.
+
+      The island panel gained Region and Held by, which it could not state
+      before. `island-tint` sits *before* `region-fill` so a mainland tint
+      still wins where the two overlap.
 - [x] **Region fills fail the desaturation rule** — fixed with a three-tier
       lightness ladder. Worst adjacent pair goes from **0.0000 to 0.0068**
       greyscale luminance, and all 14 adjacent pairs now clear the ~0.005

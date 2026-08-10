@@ -472,6 +472,35 @@ export function buildStyle(): StyleSpecification {
         source: 'islands',
         paint: { 'fill-color': token('land') },
       },
+      /*
+       * Island territory, painted at the same recipe as the mainland.
+       *
+       * The region polygons are digitised to the mainland coastline and do not
+       * cover the islands, so `region-fill` leaves them bare `land` — which
+       * rendered Dragonstone and Driftmark, the Targaryen and Velaryon seats,
+       * as unclaimed ground in the middle of the Crownlands' own bay.
+       *
+       * `claimedBy` is resolved per island at prepare time (majority of
+       * vertices inside a region — see `regionForIsland`), so this reads the
+       * *same* expression the mainland uses. Islands with no claim — the
+       * Stepstones, Grey Gallows — carry a null `claimedBy`, fall through
+       * `regionTint`'s default to `land`, and stay visibly unclaimed, which is
+       * the correct answer for contested water rather than a gap.
+       *
+       * Drawn before `region-fill` so a mainland tint still wins where the two
+       * overlap, and at the same 0.42 so no seam shows where an island meets
+       * the shore it belongs to.
+       */
+      {
+        id: 'island-tint',
+        type: 'fill',
+        source: 'islands',
+        filter: ['has', 'claimedBy'],
+        paint: {
+          'fill-color': regionTint(),
+          'fill-opacity': 0.42,
+        },
+      },
 
       // Region tints, kept low so labels stay legible over them.
       {
@@ -569,10 +598,13 @@ export function buildStyle(): StyleSpecification {
        * `region-fill`, so a single `land` fill left it untinted and visibly
        * greyer than the Riverlands around it. The second fill replays the
        * tint at the same opacity, so the isle is coloured by the same recipe
-       * as the shore it belongs to. It sits inside the Riverlands, claimed by
-       * Tully; the tint is hard-coded because the islands source carries no
-       * `claimedBy` (see "Island region tinting" in ROADMAP.md — when that
-       * lands, this can read `['get','claimedBy']` like `region-fill` does).
+       * as the shore it belongs to.
+       *
+       * That tint used to be hard-coded to the Riverlands, because the islands
+       * source carried no `claimedBy`. It does now (resolved per island at
+       * prepare time), so this reads the same `regionTint()` as everything
+       * else and the Isle of Faces follows the Riverlands automatically if the
+       * political layer ever changes.
        */
       {
         id: 'lake-island',
@@ -587,7 +619,7 @@ export function buildStyle(): StyleSpecification {
         source: 'islands',
         filter: ['==', ['get', 'name'], 'Isle of Faces'],
         paint: {
-          'fill-color': token('region-riverlands'),
+          'fill-color': regionTint(),
           'fill-opacity': 0.42,
         },
       },

@@ -99,8 +99,8 @@ The whole UI is one `innerHTML` template and a few event handlers in
           │
           ▼
  src/map-style.ts  ──────────────►  MapLibre style object
-     builds 12 sources                (28 layers, ordered back to front)
-     and 28 layers                             │
+     builds 12 sources                (29 layers, ordered back to front)
+     and 29 layers                             │
           ▲                                    ▼
           │                            src/main.ts
  src/palette.ts                        constructs the map, wires
@@ -133,7 +133,7 @@ front:
 
 ```
 sea → neighbour-{shelf,land,coast} → land-shelf → island-shelf
-    → land → island → region-fill → region-edge
+    → land → island → island-tint → region-fill → region-edge
     → lake → lake-edge → river
     → lake-island → lake-island-tint → lake-island-coast
     → coast → island-coast → road → wall-glow → wall
@@ -141,10 +141,14 @@ sea → neighbour-{shelf,land,coast} → land-shelf → island-shelf
     → place-dot → road-label → wall-label → place-label
 ```
 
-Two of those need explaining. **Inland water sits above the region tints**, so
+Three of those need explaining. **Inland water sits above the region tints**, so
 a river is water rather than a tinted river. **The Isle of Faces is drawn three
 times** — fill, tint, coastline — after the lake, because God's Eye has no hole
 punched for it upstream and would otherwise paint straight over the island.
+**`island-tint` exists because the region polygons stop at the mainland
+coastline** and so leave the islands bare: without it Dragonstone and Driftmark
+render as unclaimed ground in the Crownlands' own bay. It sits *before*
+`region-fill` so a mainland tint still wins on overlap.
 
 ### Reveal by zoom
 
@@ -206,7 +210,7 @@ Fan-made Westeros GIS files: **Tear** (Cartographer's Guild) →
 | `got_continents` | `westeros`, `neighbours` | Westeros; Essos + Sothoryos kept separate |
 | `got_politcal` | `regions`, `region-labels` | Misspelled upstream — that is the real filename |
 | `got_locations` | `places` | 205 features, 151 confirmed |
-| `got_islands` | `islands`, `island-labels` | 33 features, 25 labelled |
+| `got_islands` | `islands`, `island-labels` | 33 features, 25 labelled, 31 assigned to a region |
 | `got_regions` | `sea-labels` | 56 features; the 28 `water` ones yield 15 usable seas |
 | `got_rivers` | `rivers` | 46 in frame, 21 named |
 | `got_roads` | `roads` | 12 in Westeros, 6 named; filtered by `continent` |
@@ -231,6 +235,13 @@ Worth knowing before you trust a field:
   or the map labels a cape as if it were a sea.
 - **Lake polygons have no holes for their islands.** Hence the Isle of Faces
   being redrawn above God's Eye.
+- **Islands carry no allegiance, and the region polygons do not cover them** —
+  they are digitised to the mainland coastline, so an island sits mostly in
+  open water and only clips the edge of the territory that claims it.
+  `regionForIsland` assigns one by *majority of vertices*, not by centroid: a
+  centroid test hands Great Wyk, the Greyjoys' largest island, to nobody. 31 of
+  33 resolve; the Stepstones and Grey Gallows genuinely belong to no region and
+  stay untinted.
 - **One political feature has a null name** (the wildling lands) and one
   location has none (dropped — an unnamed point cannot be labelled or found).
 - **Nothing marks a great seat.** 105 of the 151 confirmed places are

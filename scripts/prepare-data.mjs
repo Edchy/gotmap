@@ -144,6 +144,62 @@ const inRing = (ring, x, y) => {
   return inside;
 };
 
+/** Is a point inside a Polygon/MultiPolygon, respecting holes? */
+const inPolygon = (geometry, x, y) => {
+  const polygons =
+    geometry.type === 'Polygon'
+      ? [geometry.coordinates]
+      : geometry.type === 'MultiPolygon'
+        ? geometry.coordinates
+        : [];
+  for (const [outer, ...holes] of polygons) {
+    if (!outer || !inRing(outer, x, y)) continue;
+    if (!holes.some((hole) => inRing(hole, x, y))) return true;
+  }
+  return false;
+};
+
+/**
+ * Which region an island belongs to, by majority of its vertices.
+ *
+ * Not by centroid, which is the obvious approach and gets Great Wyk wrong: the
+ * region polygons are digitised to the *mainland* coastline, so an island sits
+ * mostly in open water and only overlaps the edge of the territory that claims
+ * it. Great Wyk has 22 of 47 vertices inside the Iron Islands and a centroid
+ * that lands just outside, so a centroid test hands the Greyjoys' largest
+ * island to nobody.
+ *
+ * Counting vertices inside each region and taking the winner is robust to
+ * that: every island resolves on a plurality, not a majority of its whole
+ * outline. Returns null when no vertex lands in any region at all, which is a
+ * real answer rather than a failure — the Stepstones are contested and Grey
+ * Gallows is beyond the map's politics. Both stay untinted, correctly.
+ */
+const regionForIsland = (geometry, regionFeatures) => {
+  const polygons =
+    geometry.type === 'Polygon' ? [geometry.coordinates] : geometry.coordinates;
+  const tally = new Map();
+
+  for (const polygon of polygons) {
+    for (const [x, y] of polygon[0]) {
+      const region = regionFeatures.find((r) => inPolygon(r.geometry, x, y));
+      if (!region) continue;
+      const name = region.properties.name;
+      tally.set(name, (tally.get(name) ?? 0) + 1);
+    }
+  }
+
+  let best = null;
+  let bestCount = 0;
+  for (const [name, count] of tally) {
+    if (count > bestCount) {
+      best = name;
+      bestCount = count;
+    }
+  }
+  return best;
+};
+
 /** Shortest distance from a point to a ring's edges, in degrees. */
 const distToRing = (ring, x, y) => {
   let best = Infinity;
@@ -470,12 +526,35 @@ async function main() {
     type: 'FeatureCollection',
     features: islands.features
       .filter((f) => intersectsWesteros(f.geometry))
-      .map((f, i) => ({
-        type: 'Feature',
-        id: i,
-        geometry: f.geometry,
-        properties: { name: f.properties.name ?? null },
-      })),
+      .map((f, i) => {
+        /*
+         * Islands carry the allegiance of the region they sit in, so the map
+         * can tint them like any other territory. Without this Dragonstone and
+         * Driftmark — the Targaryen and Velaryon seats — render as unclaimed
+         * land in the middle of Blackwater Bay.
+         *
+         * `claimedBy` is copied onto the island rather than looked up at draw
+         * time so the islands source is self-describing: `regionTint()` reads
+         * the same property from regions and islands alike, and neither layer
+         * needs to know about the other.
+         */
+        const region = regionForIsland(f.geometry, regions.features);
+        const claimedBy = regions.features.find(
+          (r) => r.properties.name === region,
+        )?.properties.claimedBy;
+        return {
+          type: 'Feature',
+          id: i,
+          geometry: f.geometry,
+          properties: {
+            name: f.properties.name ?? null,
+            // Omitted entirely rather than set to null when there is no claim:
+            // the style filters on `['has', 'claimedBy']`, and a key present
+            // with a null value passes that test.
+            ...(region ? { region, claimedBy } : {}),
+          },
+        };
+      }),
   };
 
   /**
@@ -499,6 +578,14 @@ async function main() {
           geometry: { type: 'Point', coordinates: labelAnchor(f.geometry) },
           properties: {
             name: f.properties.name,
+            // Carried through from the island polygon so the detail panel can
+            // name the holding house without loading the polygon source.
+            ...(f.properties.region
+              ? {
+                  region: f.properties.region,
+                  claimedBy: f.properties.claimedBy,
+                }
+              : {}),
             /**
              * Half the island's width and height, in degrees. The style turns
              * these into a radial offset so the label clears the coastline —
@@ -769,10 +856,24 @@ async function main() {
       `(${regionLabels.features.length} labelled)`,
   );
   const namedIslands = islandFeatures.features.filter((f) => f.properties.name);
+  const unclaimedIslands = islandFeatures.features.filter(
+    (f) => !f.properties.claimedBy,
+  );
   console.log(
     `islands   ${islandFeatures.features.length} features ` +
-      `(${islandLabels.features.length} labelled)`,
+      `(${islandLabels.features.length} labelled, ` +
+      `${islandFeatures.features.length - unclaimedIslands.length} in a region)`,
   );
+  if (unclaimedIslands.length) {
+    // Expected to be the Stepstones and Grey Gallows: genuinely beyond any
+    // region's claim, so they stay untinted. A *named* island appearing here
+    // that shouldn't is the signal that the assignment has drifted.
+    console.log(
+      `          unclaimed: ${unclaimedIslands
+        .map((f) => f.properties.name ?? '(unnamed)')
+        .join(', ')}`,
+    );
+  }
   console.log(
     `places    ${places.features.length} features ` +
       `(${confirmed.length} confirmed, ${places.features.length - confirmed.length} speculative)`,

@@ -65,6 +65,10 @@ type Target =
       halfWidth: number;
       halfHeight: number;
       wiki?: string;
+      /** Region the island sits in, resolved at prepare time. */
+      region?: string;
+      /** House claiming that region. Absent for the contested islands. */
+      claimedBy?: string;
     };
 
 const WESTEROS_BOUNDS: [[number, number], [number, number]] = [
@@ -841,10 +845,12 @@ function goTo(target: Target, animate = true) {
 }
 
 /**
- * Islands carry only a name upstream — no house, no type, no area worth
- * quoting. So the panel says what is actually known: the name, and any
- * settlements that sit on it. Padding it out with invented facts would be the
- * same mistake as presenting a speculative point as confirmed.
+ * Islands carry only a name upstream — no type, no area worth quoting. The
+ * region and its house are *derived* (majority of vertices inside a region
+ * polygon, resolved in `prepare-data.mjs`), which is why they can be stated
+ * here: they follow from the political layer rather than being invented. Two
+ * islands have no claim at all — the Stepstones and Grey Gallows — and simply
+ * show no allegiance, which is the honest answer for contested water.
  *
  * Settlements are matched by distance to the label anchor rather than by
  * point-in-polygon: island geometries are in a separate source from the one
@@ -881,6 +887,19 @@ function showIsland(target: Extract<Target, { kind: 'island' }>) {
     <p class="panel__kicker">Island</p>
     <h2 class="panel__title" id="panel-title">${wikiLink(target.name, target.wiki)}</h2>
     <dl class="facts">
+      ${
+        target.region
+          ? `<div><dt>Region</dt><dd>${wikiLink(
+              target.region,
+              regionWiki.get(target.region),
+            )}</dd></div>`
+          : ''
+      }
+      ${
+        target.claimedBy
+          ? `<div><dt>Held by</dt><dd>${escape(holderName(target.claimedBy))}</dd></div>`
+          : ''
+      }
       ${
         on.length
           ? `<div><dt>Settlements</dt><dd>${on.length}</dd></div>`
@@ -1048,6 +1067,8 @@ async function loadPlaces() {
       halfWidth: (feature.properties?.halfWidth as number) ?? 0,
       halfHeight: (feature.properties?.halfHeight as number) ?? 0,
       wiki: feature.properties?.wiki as string | undefined,
+      region: feature.properties?.region as string | undefined,
+      claimedBy: feature.properties?.claimedBy as string | undefined,
     });
   }
 }
