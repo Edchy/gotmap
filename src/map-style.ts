@@ -344,6 +344,8 @@ export function buildStyle(): StyleSpecification {
       regionLabels: { type: 'geojson', data: '/data/region-labels.geojson' },
       rivers: { type: 'geojson', data: '/data/rivers.geojson' },
       lakes: { type: 'geojson', data: '/data/lakes.geojson' },
+      roads: { type: 'geojson', data: '/data/roads.geojson' },
+      wall: { type: 'geojson', data: '/data/wall.geojson' },
     },
     layers: [
       { id: 'sea', type: 'background', paint: { 'background-color': token('sea') } },
@@ -569,6 +571,85 @@ export function buildStyle(): StyleSpecification {
         paint: {
           'line-color': token('rule'),
           'line-width': ['interpolate', ['linear'], ['zoom'], 2, 0.5, 6, 1],
+        },
+      },
+
+      /**
+       * Roads, above the coastline because they are on the land.
+       *
+       * Dashed, and that is the whole argument for how they read. A road and
+       * a river are both thin lines crossing the same region fills, and at
+       * one pixel neither width nor colour alone separates them — but a
+       * broken line is unmistakably a made thing, and it is the convention
+       * every printed atlas already uses. Colour reinforces it (warm against
+       * the water's cold) rather than carrying it alone.
+       *
+       * They arrive late, at z4.6. Roads are the densest linework on the map
+       * and the reveal ladder exists so nothing competes with the step before
+       * it; at the opening view twelve dashed lines across the continent is
+       * noise on a shape you have not read yet.
+       */
+      {
+        id: 'road',
+        type: 'line',
+        source: 'roads',
+        layout: { 'line-cap': 'round', 'line-join': 'round' },
+        paint: {
+          'line-color': token('road'),
+          // Upstream's own hierarchy: 2 is a named highway, 1 a lesser track.
+          'line-width': [
+            'interpolate', ['linear'], ['zoom'],
+            4, ['match', ['get', 'size'], 2, 0.7, 0.5],
+            8, ['match', ['get', 'size'], 2, 1.8, 1.1],
+          ],
+          // Dash lengths are in line-widths, so they scale with the stroke and
+          // the pattern stays proportional instead of dissolving as you zoom.
+          'line-dasharray': [3, 2.5],
+          'line-opacity': [
+            'interpolate', ['linear'], ['zoom'],
+            4.6, 0,
+            5.4, ['match', ['get', 'size'], 2, 0.85, 0],
+            6.2, 0.85,
+          ],
+        },
+      },
+
+      /**
+       * The Wall.
+       *
+       * Deliberately not drawn as a road — it is the northern border of the
+       * realm, and a dashed track would be the one place this map actively
+       * misleads about the world. Three strokes: a soft cold glow, the solid
+       * ice line, and a hairline crown. Together they read as a built thing
+       * with mass, at a weight nothing else on the map carries.
+       *
+       * It is the only feature exempt from the reveal ladder. The Wall is
+       * visible from the opening view because it is the single most
+       * recognisable thing in Westeros and it *is* the north edge of the
+       * settled world — introducing it late would be like fading in the
+       * coastline.
+       */
+      {
+        id: 'wall-glow',
+        type: 'line',
+        source: 'wall',
+        layout: { 'line-cap': 'round' },
+        paint: {
+          'line-color': token('wall'),
+          'line-width': ['interpolate', ['linear'], ['zoom'], 3, 4, 8, 14],
+          'line-blur': ['interpolate', ['linear'], ['zoom'], 3, 3, 8, 10],
+          'line-opacity': 0.22,
+        },
+      },
+      {
+        id: 'wall',
+        type: 'line',
+        source: 'wall',
+        layout: { 'line-cap': 'round' },
+        paint: {
+          'line-color': token('wall'),
+          'line-width': ['interpolate', ['linear'], ['zoom'], 3, 1.4, 8, 4.5],
+          'line-opacity': 0.9,
         },
       },
 
@@ -799,6 +880,81 @@ export function buildStyle(): StyleSpecification {
           // A faint casing so marks stay legible over region fills.
           'icon-halo-color': token('sea'),
           'icon-halo-width': 1,
+        },
+      },
+
+      /**
+       * Road names, set along the line rather than beside it.
+       *
+       * `symbol-placement: 'line'` is the whole point: a road name that sits
+       * in a horizontal block next to a winding road belongs to nothing in
+       * particular, where one that bends along the route is unambiguous. Only
+       * the six named roads carry labels; the unnamed tracks are texture.
+       *
+       * Sorted last (high sort key) so a road name never wins a collision
+       * against a settlement — the settlements are the subject, the roads are
+       * how you get between them.
+       */
+      {
+        id: 'road-label',
+        type: 'symbol',
+        source: 'roads',
+        filter: ['has', 'name'],
+        layout: {
+          'text-field': ['get', 'name'],
+          'text-font': ['literal', ['Inter Medium']],
+          'text-size': ['interpolate', ['linear'], ['zoom'], 5, 9, 8, 11.5],
+          'symbol-placement': 'line',
+          'text-letter-spacing': 0.08,
+          // Repeat on long roads: the Kingsroad spans the continent, and one
+          // label in the middle leaves both ends unidentified.
+          'symbol-spacing': 260,
+          'text-max-angle': 32,
+          'text-padding': 6,
+          'symbol-sort-key': 20,
+        },
+        paint: {
+          'text-color': token('road'),
+          'text-halo-color': token('sea'),
+          'text-halo-width': 1.4,
+          'text-halo-blur': 0.3,
+          'text-opacity': [
+            'interpolate', ['linear'], ['zoom'],
+            5.2, 0,
+            6, 1,
+          ],
+        },
+      },
+
+      /**
+       * The Wall's name, along the line and in its own ice colour.
+       *
+       * Wide-tracked caps, the same convention the sea labels use, because
+       * this is a feature of the world rather than a settlement — and at the
+       * scale it appears, letter-spacing is what makes four characters read
+       * as a 300-mile structure rather than a small label.
+       */
+      {
+        id: 'wall-label',
+        type: 'symbol',
+        source: 'wall',
+        layout: {
+          'text-field': ['get', 'name'],
+          'text-font': ['literal', ['Inter Medium']],
+          'text-size': ['interpolate', ['linear'], ['zoom'], 3.4, 9, 7, 13],
+          'symbol-placement': 'line',
+          'text-letter-spacing': 0.22,
+          'text-transform': 'uppercase',
+          'text-offset': [0, -1.2],
+          'symbol-sort-key': 0,
+          'text-padding': 4,
+        },
+        paint: {
+          'text-color': token('wall'),
+          'text-halo-color': token('sea'),
+          'text-halo-width': 1.6,
+          'text-halo-blur': 0.4,
+          'text-opacity': ['interpolate', ['linear'], ['zoom'], 3.2, 0, 3.9, 1],
         },
       },
 

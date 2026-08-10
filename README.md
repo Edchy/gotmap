@@ -89,8 +89,9 @@ sea → neighbour-{shelf,land,coast} → land-shelf → island-shelf
     → land → island → region-fill → region-edge
     → lake → lake-edge → river
     → lake-island → lake-island-tint → lake-island-coast
-    → coast → island-coast
-    → sea-label → island-label → region-label → place-dot → place-label
+    → coast → island-coast → road → wall-glow → wall
+    → sea-label → island-label → region-label
+    → place-dot → road-label → wall-label → place-label
 ```
 
 Two of those need explaining. **Inland water sits above the region tints**, so
@@ -109,6 +110,12 @@ before it:
 | 3.4 – 3.9 | Region names, alone |
 | 3.9 – 4.4 | Cities join |
 | 4.4 → 5.8 | Towns, then castles, then everything |
+| 4.6 → 6.2 | Roads: the named highways first, lesser tracks from 5.4 |
+
+**The Wall is the one exception to all of this** — drawn from the opening view,
+its name from z3.6. It is the northern border of the settled world and the most
+recognisable thing in Westeros; fading it in late would be like fading in the
+coastline.
 
 Region names then fade back at z7 (`REGION_LABEL_OPACITY`) once the settlements
 are the real subject.
@@ -154,6 +161,8 @@ Fan-made Westeros GIS files: **Tear** (Cartographer's Guild) →
 | `got_islands` | `islands`, `island-labels` | 33 features, 25 labelled |
 | `got_regions` | `sea-labels` | 56 features; the 28 `water` ones yield 15 usable seas |
 | `got_rivers` | `rivers` | 46 in frame, 21 named |
+| `got_roads` | `roads` | 12 in Westeros, 6 named; filtered by `continent` |
+| `got_wall` | `wall` | One feature, 12 points |
 | `got_lakes` | `lakes` | 11 in frame, 3 named |
 
 The prepare script prints a summary of every layer on each run, plus what it
@@ -164,7 +173,11 @@ added by hand and which expected places are still missing.
 Worth knowing before you trust a field:
 
 - **`size` on rivers is null on 73 of 74 features.** The advertised width
-  hierarchy does not exist; width is derived from line length instead.
+  hierarchy does not exist; width is derived from line length instead. **On
+  roads the same field is real** — populated on every feature, and the four
+  size-2 roads are exactly the named highways (Kingsroad, Goldroad, Roseroad,
+  Oceanroad), which are also the four longest. Don't generalise either way:
+  check the field per layer.
 - **`type: 'water'` in `got_regions` includes headlands and island groups** —
   Cape Kraken, Massey's Hook, The Fingers, the Iron Islands. Filtered by name,
   or the map labels a cape as if it were a sea.

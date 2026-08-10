@@ -28,6 +28,8 @@ const LAYERS = {
   regions: 'got_regions',
   rivers: 'got_rivers',
   lakes: 'got_lakes',
+  roads: 'got_roads',
+  wall: 'got_wall',
 };
 
 /**
@@ -263,8 +265,17 @@ const EXPECTED_PLACES = [
 async function main() {
   await mkdir(OUT, { recursive: true });
 
-  const [continents, political, locations, islands, terrain, rawRivers, rawLakes] =
-    await Promise.all(Object.values(LAYERS).map(fetchLayer));
+  const [
+    continents,
+    political,
+    locations,
+    islands,
+    terrain,
+    rawRivers,
+    rawLakes,
+    rawRoads,
+    rawWall,
+  ] = await Promise.all(Object.values(LAYERS).map(fetchLayer));
 
   const westeros = {
     type: 'FeatureCollection',
@@ -495,6 +506,60 @@ async function main() {
   };
 
   /**
+   * Roads. 12 in Westeros, 6 named.
+   *
+   * **`size` is real here**, which is worth stating because it is a dead end
+   * on rivers (null on 73 of 74). On roads it is populated on every feature
+   * and it agrees with the fiction: the four size-2 roads are exactly the
+   * named highways — the Kingsroad, Goldroad, Roseroad and Oceanroad — and
+   * they are also the four longest. So the hierarchy is taken straight from
+   * the data rather than derived from length as rivers' width is.
+   *
+   * The `continent` field does the filtering that a bbox test would do badly:
+   * 9 of the 21 roads are Essosi, and some run close enough to the frame's
+   * eastern edge that geometry alone would admit them.
+   */
+  const roads = {
+    type: 'FeatureCollection',
+    features: rawRoads.features
+      .filter((f) => f.properties.continent === 'Westeros')
+      .filter((f) => intersectsWesteros(f.geometry))
+      .map((f, i) => ({
+        type: 'Feature',
+        id: i,
+        geometry: f.geometry,
+        properties: {
+          name: f.properties.name ?? null,
+          // 2 = named highway, 1 = lesser track. Upstream's own hierarchy.
+          size: f.properties.size ?? 1,
+        },
+      })),
+  };
+
+  /**
+   * The Wall. One feature, 12 points, 4.38 degrees of it.
+   *
+   * Kept in its own file rather than folded into `roads` because it is not a
+   * road: it is the northern border of the realm and the map should say so.
+   * Drawing it as a track would be the one place this atlas actively misleads
+   * about the world.
+   *
+   * The geometry registers against the settlements exactly — the east end is
+   * Eastwatch-by-the-Sea (20.72, 34.79) to two decimals, the west end is the
+   * Shadow Tower, and Castle Black falls on the line between them — so no
+   * adjustment is needed or wanted.
+   */
+  const wall = {
+    type: 'FeatureCollection',
+    features: rawWall.features.map((f, i) => ({
+      type: 'Feature',
+      id: i,
+      geometry: f.geometry,
+      properties: { name: f.properties.name ?? 'The Wall' },
+    })),
+  };
+
+  /**
    * Rivers, with a width hierarchy derived from length.
    *
    * The upstream `size` property is advertised as the hierarchy but is null on
@@ -598,6 +663,8 @@ async function main() {
     writeFile(join(OUT, 'region-labels.geojson'), JSON.stringify(regionLabels)),
     writeFile(join(OUT, 'rivers.geojson'), JSON.stringify(rivers)),
     writeFile(join(OUT, 'lakes.geojson'), JSON.stringify(lakes)),
+    writeFile(join(OUT, 'roads.geojson'), JSON.stringify(roads)),
+    writeFile(join(OUT, 'wall.geojson'), JSON.stringify(wall)),
   ]);
 
   const confirmed = places.features.filter((f) => f.properties.confirmed);
@@ -632,6 +699,13 @@ async function main() {
     `lakes     ${lakes.features.length} features ` +
       `(${namedLakes.map((f) => f.properties.name).join(', ')})`,
   );
+
+  const namedRoads = roads.features.filter((f) => f.properties.name);
+  console.log(
+    `roads     ${roads.features.length} features ` +
+      `(${namedRoads.map((f) => f.properties.name).join(', ')})`,
+  );
+  console.log(`wall      ${wall.features.length} feature`);
 
   if (addedPlaces.length) {
     console.log(

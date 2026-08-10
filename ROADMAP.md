@@ -47,9 +47,39 @@ Most of this is already sitting in the upstream dataset, unused. These are
 - [x] **Lakes** — 11 in frame, 3 named (God's Eye, Red Lake, Long Lake).
       Drawn *after* the region tints, so a river is water rather than a
       tinted river.
-- [ ] **Roads** — 21 features, 6 named. The Kingsroad is the one that matters.
-- [ ] **The Wall** — a single line feature, and it deserves its own treatment
-      rather than being drawn as a road.
+- [x] **Roads** — 12 in Westeros (9 of the 21 are Essosi, excluded by the
+      `continent` field rather than by geometry — several run close enough to
+      the frame's eastern edge that a bbox test would admit them). 6 named.
+
+      **`size` is real on roads**, which is worth recording because it is a
+      dead end on rivers: populated on every feature, and the four size-2
+      roads are exactly the named highways — Kingsroad, Goldroad, Roseroad,
+      Oceanroad — which are also the four longest. Taken straight from the
+      data rather than derived.
+
+      Drawn dashed, and that is what does the work. A road and a river are
+      both thin lines crossing the same region fills; at one pixel neither
+      width nor colour separates them, but a broken line is unmistakably a
+      made thing. Colour reinforces (warm against the water's cold) rather
+      than carrying it alone. Names are set *along* the line — a road name in
+      a horizontal block beside a winding road belongs to nothing in
+      particular — and sorted last so they never beat a settlement.
+- [x] **The Wall** — one feature, 12 points, 4.38 degrees.
+
+      **The geometry registers exactly against the settlements**: the east end
+      is Eastwatch-by-the-Sea to two decimals, the west end is the Shadow
+      Tower, and Castle Black falls on the line between. No adjustment needed.
+
+      Three strokes — a cold glow, the ice line, a hairline — so it reads as a
+      built thing with mass rather than a track. It is the **only feature
+      exempt from the reveal ladder**, drawn from the opening view: it is the
+      northern border of the settled world and the most recognisable thing in
+      Westeros, so introducing it late would be like fading in the coastline.
+      Its label sorts behind the region names, which own z3.4–3.9 alone.
+
+      Not yet searchable — "the wall" still returns "Lands Beyond the Wall".
+      Making it a search target needs a fourth `Target` kind, a panel and a
+      deep-link parameter; worth doing, but it is its own piece of work.
 - [~] **Terrain regions — tried, reverted. Do not retry from this dataset.**
       The same layer holds 7 forests, 4 mountain ranges and 5 shores. Forests
       were built end to end (prepared layer, `forest` token, fill below the
@@ -82,10 +112,15 @@ Most of this is already sitting in the upstream dataset, unused. These are
       the North), so they are struck from the list too rather than left
       pending. Terrain needs a different dataset, not a different render.
 
-**Note on ordering:** seas are done and cost the map nothing — they sit in
-water that was empty. Rivers and roads are the real density test: they are
-lines crossing the region fills, competing with the linework already there
-(coastlines, region edges). Judge after rivers, before roads.
+**Note on ordering:** seas cost the map nothing — they sit in water that was
+empty. Rivers and roads were the real density test: lines crossing the region
+fills, competing with the linework already there (coastlines, region edges).
+
+Roads are in, and the answer was **stagger them rather than thin them**. Twelve
+dashed lines across the continent is noise at the opening view, so they arrive
+at z4.6 — after the settlements have established themselves — with the lesser
+tracks held back to z5.4 and their names to z5.2. Nothing needed to be dropped;
+it needed to arrive later. The dash is what keeps them from reading as rivers.
 
 **Region names fill in progressively; they cannot all show at once.** Ten
 multi-line wide-tracked names do not fit a continent 280px wide. At the fitted
@@ -256,6 +291,27 @@ these as estimates, not facts.
       are `Castle`, so Winterfell and Highgarden currently render identically
       to a minor holdfast. A short hand-authored list promoting the great
       seats would make the map read like the political reality of the world.
+- [ ] **A visual anchor in the panel.** The panel is text-only and sparse,
+      because the data is sparse. Worth solving — but *not* with photographs.
+
+      **Images of places have no usable source.** Show stills or promotional
+      art and HBO owns them: the atlas stops being publishable under its
+      current CC BY-NC-SA / MIT terms, which is too high a price. Fan art is
+      individually copyrighted by hundreds of artists with no clear licences
+      and no way to fetch by place name. Wikimedia Commons is the only
+      properly licensed route and has almost nothing, because the places are
+      fictional — what it *does* have is filming locations (Dubrovnik for
+      King's Landing, Castle Ward for Winterfell), which is a different claim
+      than "here is Winterfell" and quietly turns the atlas into a
+      location-scouting guide. Generated art is licensable but invented, which
+      is exactly what the provenance rules exist to prevent.
+
+      **House sigils are the version worth building.** Heraldry is described
+      in the text, so a line drawing is *authored* rather than borrowed;
+      `icons.ts` already rasterises SDF marks, so the pipeline exists; and one
+      mark per house is ~12 pieces of work, not 205. Stays inside the
+      near-monochrome system, and gives every region panel and every great
+      seat a visual anchor. Do this instead.
 - [x] **Style initialisation** — no genuine race. Two separate things were
       being read as one bug.
 

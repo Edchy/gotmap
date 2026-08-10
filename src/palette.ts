@@ -30,6 +30,20 @@ export const palette = {
   rule: 'oklch(38% 0.010 250)',
   'rule-soft': 'oklch(30% 0.010 250)',
 
+  /* Roads: a made thing, so warm where the water is cold.
+     Rivers and roads are both thin lines crossing the same region fills, and
+     hue is the only cue that separates them at one pixel — a neutral road
+     reads as a tributary. Held to 0.018 chroma and 40% L: enough to say
+     "not water", far short of the 0.065 the data roles use, because a road
+     is ground truth about the world and not a data role. */
+  road: 'oklch(40% 0.018 70)',
+
+  /* The Wall: the one piece of built geography with its own colour.
+     Ice, so it takes the coldest hue on the map and the highest value of any
+     line — brighter than the coastline hairline, because at z3 this is a
+     4-degree stroke that has to read as a border rather than a river. */
+  wall: 'oklch(72% 0.030 220)',
+
   /* Ink ramp, measured against --sea: ink 15.8:1, ink-muted 7.3:1 (both clear
      AA for body text). ink-faint is 3.5:1 — hairlines and marks only. */
   ink: 'oklch(93% 0.004 250)',
