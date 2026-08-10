@@ -21,10 +21,46 @@ npm run dev          # http://localhost:5173
 | `npm run check` | Validates the MapLibre style on its own |
 | `npm run data` | Re-fetches and re-prepares `public/data/` from upstream |
 | `npm run glyphs` | Regenerates the SDF glyphs from `assets/fonts/` |
+| `npm run wiki-links` | Re-checks which names have a wiki page (see below) |
 
-`npm run data` and `npm run glyphs` are **not** part of the build. Their output
-is committed, so a clone runs with `npm install && npm run dev`. Re-run them
-only when the upstream data or the fonts change.
+`npm run data`, `npm run glyphs` and `npm run wiki-links` are **not** part of
+the build. Their output is committed, so a clone runs with `npm install &&
+npm run dev`. Re-run them only when the upstream data, the fonts, or the wiki
+change.
+
+### Wiki links go stale silently
+
+The panel links a name to its wiki page only when that page is **known** to
+exist — `scripts/check-wiki-links.mjs` verifies all 241 names against the
+wiki's API and writes the resolved title onto each feature. Names with no page
+render as plain text, because a link that looks authoritative and 404s is the
+same failure as presenting a speculative point as confirmed.
+
+That guarantee is a property of the *check*, not of the data. Pages get
+renamed, merged and deleted, and **nothing in the app will tell you when a
+link dies** — the site never contacts the wiki at runtime, which is the point.
+Re-run it periodically, and after any change to place names:
+
+```bash
+WIKI_CONTACT="you@example.com" npm run wiki-links          # writes
+WIKI_CONTACT="you@example.com" npm run wiki-links -- --dry # reports only
+```
+
+Two things worth knowing when you do:
+
+- **A recognisable name in the "no page found" list is usually a misspelling
+  in the data, not a missing article.** This is how `Oakensheild` and `Lort
+  Harroway's Town` were caught. Fix those in `NAME_FIXES` in
+  `prepare-data.mjs` — the pipeline refetches from upstream, so editing the
+  prepared file by hand is undone on the next `npm run data`.
+- **Roughly ten names will never resolve, correctly.** "Village", "Holdfast",
+  "Tower" and friends are genuinely nameless upstream. No page exists because
+  there is nothing to write about.
+
+The wiki is Fandom, chosen because its API answers plainly. AWOIAF is the
+better fit on register and book coverage but is unusable from a script:
+Cloudflare challenges every path including the homepage, so any client gets a
+403. `--wiki=<host>` overrides if that ever changes.
 
 ## Tools
 
@@ -50,12 +86,15 @@ The whole UI is one `innerHTML` template and a few event handlers in
           │  npm run data  →  scripts/prepare-data.mjs
           │                   filter to Westeros, normalise, derive labels
           ▼
- public/data/*.geojson  (10 files, committed)
+ public/data/*.geojson  (12 files, committed)
+          ▲
+          │  npm run wiki-links  →  scripts/check-wiki-links.mjs
+          │                         annotates names with a verified wiki page
           │
           ▼
  src/map-style.ts  ──────────────►  MapLibre style object
-     builds 10 sources                (23 layers, ordered back to front)
-     and 23 layers                             │
+     builds 12 sources                (28 layers, ordered back to front)
+     and 28 layers                             │
           ▲                                    ▼
           │                            src/main.ts
  src/palette.ts                        constructs the map, wires
@@ -67,9 +106,10 @@ The whole UI is one `innerHTML` template and a few event handlers in
 
 | Path | What it is |
 | --- | --- |
-| `scripts/prepare-data.mjs` | Fetches 7 upstream layers, writes the 10 prepared files. All the geometry work lives here — bbox filtering, label anchors, region assignment. |
+| `scripts/prepare-data.mjs` | Fetches the upstream layers, writes the 12 prepared files. All the geometry work lives here — bbox filtering, label anchors, region assignment. Also holds `NAME_FIXES`, the upstream-misspelling table. |
 | `scripts/build-glyphs.mjs` | Inter TTF → SDF glyph PBFs. Run once; output committed. |
 | `scripts/validate-style.mjs` | Validates the built style against the MapLibre spec. Wired into `npm run build`. |
+| `scripts/check-wiki-links.mjs` | Verifies each name against a wiki's API and writes the `wiki` page title onto the feature. Run by hand; output committed. |
 | `data/additions.json` | Hand-placed points absent upstream (Casterly Rock, High Tide, Spicetown, Hull). |
 | `src/palette.ts` | Every colour, in OKLCH. Single source of truth, projected onto `:root` at startup. |
 | `src/color.ts` | OKLCH → hex, because MapLibre's validator predates CSS Color 4. |
@@ -129,7 +169,8 @@ them in four tiers: exact, prefix, substring, then subsequence. Focus it with
 It covers all 205 places even though the map draws only the confirmed 151.
 Searching a real place and getting nothing reads as a broken search, so the
 distinction lives in the UI instead: results are flagged **Unconfirmed** and
-the panel says "Placement: Speculative". Selecting one reveals it on the map —
+the panel footnotes the point as inferred from the text. Selecting one reveals
+it on the map —
 the single exception to the confirmed-only rule, scoped to one point at a time
 and only ever by explicit request.
 
@@ -191,10 +232,10 @@ Worth knowing before you trust a field:
 Four places are absent upstream and hand-placed in `data/additions.json`:
 Casterly Rock, High Tide, Spicetown, Hull.
 
-Anything added this way carries `added: true` and shows **"Placement:
-Approximate"** in the UI with a note on where the position came from, rather
-than being presented as cadaei's work. Keep that distinction if you add more —
-the map's authority rests on not quietly inventing things.
+Anything added this way carries `added: true` and the panel footnotes where the
+position came from, rather than presenting it as cadaei's work. Keep that
+distinction if you add more — the map's authority rests on not quietly
+inventing things.
 
 ### Scope
 

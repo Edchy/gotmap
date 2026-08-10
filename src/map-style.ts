@@ -112,7 +112,7 @@ const LABEL_SORT: ExpressionSpecification = ['-', 5, ['get', 'rank']];
  * visible when the camera arrives — flying to an empty patch of land would
  * read as a broken search. Selection is the narrowest possible escape hatch:
  * it admits exactly one point at a time, only ever by explicit request, and
- * the panel simultaneously labels it "Placement: Speculative". The map still
+ * the panel simultaneously footnotes it as inferred. The map still
  * never volunteers a guess on its own.
  *
  * This wraps each *stop* of the reveal ladder below, which is the only place

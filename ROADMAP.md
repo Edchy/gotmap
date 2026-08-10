@@ -193,7 +193,7 @@ labelled from outside.
       **Search covers all 205 places; the map still draws only the confirmed
       151.** "Summerhall returns nothing" reads as a broken search, not as
       editorial restraint, so the distinction moved into the UI — results are
-      flagged `Unconfirmed` and the panel says "Placement: Speculative". A
+      flagged `Unconfirmed` and the panel footnotes the point as inferred. A
       selected speculative place is *revealed* on the map, which needed the
       narrowest possible escape hatch in the style: not a `filter` (MapLibre
       rejects `feature-state` there outright) and not a wrapper around
