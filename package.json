@@ -4,12 +4,12 @@
   "description": "An interactive atlas of Westeros.",
   "scripts": {
     "dev": "vite",
-    "build": "node scripts/validate-style.mjs && tsc --noEmit && vite build",
+    "build": "node scripts/validate-style.mjs && node scripts/check-region-contrast.mjs && tsc --noEmit && vite build",
     "preview": "vite preview",
     "data": "node scripts/prepare-data.mjs",
     "wiki-links": "node scripts/check-wiki-links.mjs",
     "glyphs": "node scripts/build-glyphs.mjs",
-    "check": "node scripts/validate-style.mjs"
+    "check": "node scripts/validate-style.mjs && node scripts/check-region-contrast.mjs"
   },
   "type": "module",
   "devDependencies": {

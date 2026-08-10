@@ -33,26 +33,35 @@ A near-monochrome interface wrapped around a four-role data palette: cold dark n
 ### Secondary
 The **data roles** — the user chose a full palette (3–4 named roles), and this is where it lives. Each role is one hue, used for one class of information, and never appears in interface chrome.
 - **Region** *(resolved)*: territory fills and their boundaries. One hue per
-  house at a shared L≈46% and chroma 0.065, painted at 0.42 opacity over Land.
-  Hues are chosen for **adjacent** separation, not in isolation: the constraint
-  that matters is that two regions sharing a border stay distinguishable once
-  composited over a dark ground. See the note in `ROADMAP.md` — tuning chroma
-  without also spreading the hues leaves the worst pairs unfixed. The Gift and
-  the lands beyond the Wall stay near-neutral: not house territory, so no hue.
+  house at chroma 0.065, painted at 0.42 opacity over Land, on a **three-tier
+  lightness ladder** of 44% / 37% / 30%. Both channels are tuned for
+  **adjacent** separation rather than in isolation: what matters is that two
+  regions sharing a border stay distinguishable, in colour *and* in greyscale.
+  Hue does the first job — tuning chroma without spreading the hues leaves the
+  worst pairs unfixed. Lightness does the second, and needs only three steps
+  because only neighbours must differ, which makes it a graph colouring rather
+  than nine separate values (there is no room for nine — see `ROADMAP.md`).
+  The Gift and the lands beyond the Wall stay near-neutral: not house
+  territory, so no hue, but they still take a tier. Enforced on every build by
+  `scripts/check-region-contrast.mjs`.
 - **Settlement** `[to be resolved]`: cities, towns, castles, holdfasts.
 - **Route** `[to be resolved]`: roads, and the Wall as a distinct linear feature.
 - **Journey** `[to be resolved]`: character paths over time; the only role permitted to animate.
 
 Each role needs a light and dark step for label-versus-fill use, and each must be distinguishable from the others by **value** as well as hue, so the map survives desaturation.
 
-> **Known gap (region fills).** The region tints do not currently meet the
-> value half of this rule: they share L≈46% by design, so once composited at
-> 0.42 over Land their greyscale luminance spans only 0.011 and several pairs
-> are identical. Desaturated, the political map goes flat. This predates the
-> chroma/hue tuning — the fills were always same-value — and fixing it means
-> laddering L per region, which trades against the even weight the fills have
-> now. Tracked rather than silently accepted; the borders (`region-edge`) do
-> still carry the territories when colour is removed.
+> **Closed (region fills).** The region tints failed the value half of this
+> rule for most of the project's life: they shared L≈46% by design, so
+> composited at 0.42 over Land their greyscale luminance spanned 0.0104 and
+> *every* adjacent pair fell below the ~0.005 where two dark greys stop
+> reading as different — four of them identical to four decimal places.
+> Desaturated, the political map went flat.
+>
+> Fixed by the three-tier ladder above: worst adjacent pair is now 0.0068 and
+> all 14 clear the floor. Because only neighbours must differ, three tiers
+> suffice where nine values would not fit, and because the ladder moves
+> *downward* the label contrast over every fill improved rather than
+> degrading. `npm run check` enforces both halves.
 
 ### Neutral
 - **Sea** `[to be resolved — the darkest ground]`: the water and the page beneath everything.

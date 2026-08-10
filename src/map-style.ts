@@ -22,20 +22,30 @@ const token = (name: TokenName) => oklchToHex(palette[name]);
  * Built lazily: tokens must be resolved after the stylesheet has applied.
  */
 const regionTint = (): ExpressionSpecification => [
-  'match',
-  ['get', 'claimedBy'],
-  'Stark', token('region-north'),
-  'Arryn', token('region-vale'),
-  'Tully', token('region-riverlands'),
-  'Greyjoy', token('region-iron'),
-  'Lannister', token('region-west'),
-  'Targaryen', token('region-crown'),
-  'Tyrell', token('region-reach'),
-  'Baratheon', token('region-storm'),
-  'Martell', token('region-dorne'),
-  "Night's Watch", token('region-watch'),
-  'Wildlings', token('region-wild'),
-  token('land'),
+  'case',
+  /*
+   * The Night's Watch holds both Gifts, and they share a border — so keying
+   * purely on `claimedBy` would paint them the same value and leave exactly
+   * one adjacent pair indistinguishable, which is the failure the lightness
+   * ladder exists to fix. Name wins over house for these two only.
+   */
+  ['==', ['get', 'name'], 'New Gift'], token('region-gift-new'),
+  ['==', ['get', 'name'], "Bran's Gift"], token('region-gift-bran'),
+  [
+    'match',
+    ['get', 'claimedBy'],
+    'Stark', token('region-north'),
+    'Arryn', token('region-vale'),
+    'Tully', token('region-riverlands'),
+    'Greyjoy', token('region-iron'),
+    'Lannister', token('region-west'),
+    'Targaryen', token('region-crown'),
+    'Tyrell', token('region-reach'),
+    'Baratheon', token('region-storm'),
+    'Martell', token('region-dorne'),
+    'Wildlings', token('region-wild'),
+    token('land'),
+  ],
 ];
 
 

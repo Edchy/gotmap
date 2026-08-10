@@ -16,9 +16,9 @@ npm run dev          # http://localhost:5173
 | Script | What it does |
 | --- | --- |
 | `npm run dev` | Vite dev server with HMR |
-| `npm run build` | Validates the style, typechecks, builds to `dist/` |
+| `npm run build` | Validates the style and fill contrast, typechecks, builds to `dist/` |
 | `npm run preview` | Serves the built `dist/` |
-| `npm run check` | Validates the MapLibre style on its own |
+| `npm run check` | Validates the MapLibre style and the region-fill contrast |
 | `npm run data` | Re-fetches and re-prepares `public/data/` from upstream |
 | `npm run glyphs` | Regenerates the SDF glyphs from `assets/fonts/` |
 | `npm run wiki-links` | Re-checks which names have a wiki page (see below) |
@@ -116,6 +116,7 @@ The whole UI is one `innerHTML` template and a few event handlers in
 | `scripts/build-glyphs.mjs` | Inter TTF → SDF glyph PBFs. Run once; output committed. |
 | `scripts/validate-style.mjs` | Validates the built style against the MapLibre spec. Wired into `npm run build`. |
 | `scripts/check-wiki-links.mjs` | Verifies each name against a wiki's API and writes the `wiki` page title onto the feature. Run by hand; output committed. |
+| `scripts/check-region-contrast.mjs` | Enforces The Value-First Rule on the region fills: every adjacent pair must differ in greyscale, and labels must still clear AA. Wired into `npm run build`. |
 | `data/additions.json` | Hand-placed points absent upstream (Casterly Rock, High Tide, Spicetown, Hull). |
 | `src/palette.ts` | Every colour, in OKLCH. Single source of truth, projected onto `:root` at startup. |
 | `src/color.ts` | OKLCH → hex, because MapLibre's validator predates CSS Color 4. |
@@ -313,6 +314,21 @@ so `src/color.ts` converts to hex at style-build time.
 fine alone were 3–9 apart in RGB where they shared a border, which is below the
 threshold where two colours read as different. Raising chroma alone does not
 fix it — the hues have to move too. See `ROADMAP.md`.
+
+**Region lightness is a three-tier ladder, and the tiers are load-bearing.**
+Hue separates neighbours in colour; lightness is what makes them survive
+greyscale (The Value-First Rule). Nine separate values will not fit — a 3% L
+step buys only ~0.004 luminance, `ink-muted` falls below AA against its own
+fill above L≈46%, and `sea` bounds the bottom. But only *adjacent* regions must
+differ, and colouring that graph needs just three tiers: **44% / 37% / 30%**.
+Moving one region between tiers can break a neighbour, so run `npm run check`
+after touching `region-*` in `palette.ts` — it is wired into the build and
+tells you which pair you broke.
+
+**The two Gifts are painted by name, not by house.** `regionTint()` keys on
+`claimedBy` everywhere else, but the Night's Watch holds both Gifts and they
+share a border, so one token would leave them indistinguishable. They have
+their own tokens on different tiers.
 
 ## Licence
 

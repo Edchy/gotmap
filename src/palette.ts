@@ -71,29 +71,70 @@ export const palette = {
      apart. So the old blue cluster (north/vale/riverlands/iron, all 195-265)
      is spread — the Vale to violet, the Iron Islands to teal — while The North
      keeps the cold blue that belongs to it. Worst adjacent pair is now 12,
-     every pair 12+. See scripts note in ROADMAP.md. */
-  'region-north': 'oklch(46% 0.065 245)',
-  'region-vale': 'oklch(45% 0.065 295)',
-  'region-riverlands': 'oklch(46% 0.065 200)',
+     every pair 12+. See scripts note in ROADMAP.md.
+
+     LIGHTNESS IS A THREE-STEP LADDER, NOT NINE DISTINCT VALUES.
+
+     Hue alone satisfied the *adjacent legibility* problem above but failed The
+     Value-First Rule: every one of these sat at L 44-48%, so composited at
+     0.42 the whole political map spanned 0.0104 in greyscale luminance and all
+     14 adjacent pairs were below the ~0.005 where two greys stop reading as
+     different. Four pairs were identical to four decimal places. Desaturated —
+     or seen by a colourblind reader, which is the same test — the map went
+     flat.
+
+     Nine separate lightness values cannot fix that. A 3% L step buys only
+     ~0.004 luminance here, so nine steps would need a ~27% range, and there is
+     nowhere to put it: `ink-muted` (the colour of 96 castle labels) drops
+     below AA 4.5:1 against its own fill at about L 46%, so the ladder can only
+     go *down*, and the bottom is bounded by `sea` — a fill darker than the
+     water reads as water.
+
+     But nine values are not needed. Only *adjacent* regions must differ, which
+     makes this a graph colouring: greedy colouring of the adjacency graph
+     (shared vertices, the same test `main.ts` uses for "Borders") needs just
+     **three** tiers. Three steps can each be large enough to actually read.
+
+     The tiers are 44% / 37% / 30%. Worst adjacent pair goes from 0.0000 to
+     0.0068, every pair clears the threshold, and `ink-muted` keeps 4.67:1 —
+     real margin over AA rather than the 4.51 a 46% top tier would have left.
+
+     Tier assignment is therefore NOT free: it satisfies the colouring, and
+     changing one region's tier can break a neighbour. Re-run the colouring if
+     the political layer ever changes. */
+  /* tier 1 (44%) — Riverlands, Iron Islands, Stormlands, and both Gifts */
+  'region-riverlands': 'oklch(44% 0.065 200)',
   'region-iron': 'oklch(44% 0.065 165)',
-  'region-west': 'oklch(47% 0.065 95)',
-  'region-crown': 'oklch(46% 0.065 25)',
-  'region-reach': 'oklch(47% 0.065 135)',
-  'region-storm': 'oklch(45% 0.065 340)',
-  'region-dorne': 'oklch(48% 0.065 60)',
+  'region-storm': 'oklch(44% 0.065 340)',
+  /* tier 2 (37%) — The North, the Vale, the Reach */
+  'region-north': 'oklch(37% 0.065 245)',
+  'region-vale': 'oklch(37% 0.065 295)',
+  'region-reach': 'oklch(37% 0.065 135)',
+  /* tier 3 (30%) — the Westerlands, Crownlands, Dorne */
+  'region-west': 'oklch(30% 0.065 95)',
+  'region-crown': 'oklch(30% 0.065 25)',
+  'region-dorne': 'oklch(30% 0.065 60)',
   /* The Gift and the lands beyond the Wall stay near-neutral: they are not
-     house territory, and a hue here would imply an allegiance they lack. */
-  'region-watch': 'oklch(42% 0.016 250)',
-  'region-wild': 'oklch(40% 0.014 250)',
+     house territory, and a hue here would imply an allegiance they lack. They
+     still take a tier, because "not claimed by a house" is no reason to be
+     invisible against the region next door.
+
+     The two Gifts need *separate* tokens even though the Night's Watch holds
+     both: they share a border, so a single `region-watch` keyed on `claimedBy`
+     would leave them the one pair the ladder failed to separate. `regionTint`
+     therefore special-cases them by name before falling through to house. */
+  'region-gift-new': 'oklch(44% 0.016 250)',
+  'region-gift-bran': 'oklch(37% 0.016 250)',
+  'region-wild': 'oklch(44% 0.014 250)',
 
   /* Region *labels*: each name in a pale tint of its own territory's hue, so
      the name is tied to the fill without needing a colour key.
 
      Same hue as the fill, L raised to 86% and chroma dropped to 0.055. The
-     fills are dark (L~46% at 0.42 over land), so lightening is the only
-     direction with room — going darker would sink the name into its own
-     territory. Measured against the composited fill this holds 7.7-8.3:1, and
-     10.8:1+ where a label straddles bare land or open sea. */
+     fills are dark, so lightening is the only direction with room — going
+     darker would sink the name into its own territory. Measured against the
+     composited fill this holds 8.2-10.3:1 (it improved when the fills were
+     laddered downward), and more where a label straddles bare land or sea. */
   'label-north': 'oklch(86% 0.055 245)',
   'label-vale': 'oklch(86% 0.055 295)',
   'label-riverlands': 'oklch(86% 0.055 200)',

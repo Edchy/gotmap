@@ -376,12 +376,51 @@ considerably.
       the Riverlands tint purely because the islands source has no `claimedBy`.
       Once it does, that layer collapses into the same `regionTint()` the
       mainland uses.
-- [ ] **Region fills fail the desaturation rule** — `DESIGN.md` requires data
-      roles be separable by value as well as hue. The region tints share
-      L≈46%, so composited at 0.42 their greyscale luminance spans just 0.011
-      and several pairs are identical: desaturated, the political map goes
-      flat. Predates the hue/chroma tuning. Fixing it means laddering L per
-      region, which trades against the even visual weight the fills have now.
+- [x] **Region fills fail the desaturation rule** — fixed with a three-tier
+      lightness ladder. Worst adjacent pair goes from **0.0000 to 0.0068**
+      greyscale luminance, and all 14 adjacent pairs now clear the ~0.005
+      floor where two dark greys stop reading as different.
+
+      The diagnosis was worse than recorded: not "several pairs are
+      identical", but *every one of the 14 adjacent pairs* below the floor,
+      four of them identical to four decimal places. Total span was 0.0104.
+
+      **Nine distinct lightness values are impossible, and unnecessary.**
+      Impossible because a 3% L step buys only ~0.004 luminance here, so nine
+      steps need a ~27% range with nowhere to put it: `ink-muted` — the colour
+      of 96 castle labels — drops below AA 4.5:1 against its own fill at about
+      L 46%, which is where the fills already sat, so the ladder can only go
+      *down*; and the bottom is bounded by `sea`, since a fill darker than the
+      water reads as water.
+
+      Unnecessary because only *adjacent* regions need to differ, which makes
+      this a graph colouring. Greedy colouring of the adjacency graph — shared
+      vertices, the same test `main.ts` uses for "Borders" — needs just
+      **three** tiers, so each step can be large enough to actually read:
+
+          tier 1 (44%)  Riverlands, Iron Islands, Stormlands, New Gift, wildling lands
+          tier 2 (37%)  The North, the Vale, the Reach, Bran's Gift
+          tier 3 (30%)  the Westerlands, Crownlands, Dorne
+
+      44/37/30 rather than 46/38/30: the higher ladder scored a slightly
+      better worst pair (0.0085) but left `ink-muted` at 4.51:1, a hair over
+      AA. Trading 0.0017 of separation for 4.67:1 is the better deal — and
+      because the ladder moves *down*, label contrast improved across every
+      fill rather than degrading.
+
+      **The two Gifts needed splitting.** `regionTint()` keyed on `claimedBy`,
+      and the Night's Watch holds both — so they were painted identically
+      while sharing a border, the one pair no lightness ladder could fix.
+      `regionTint` now special-cases them by name before falling through to
+      house, with `region-gift-new` and `region-gift-bran` on different tiers.
+
+      **Tier assignment is not free.** It satisfies a colouring, so moving one
+      region can break a neighbour. `scripts/check-region-contrast.mjs` guards
+      this: it composites every fill over `land` at the layer's real opacity,
+      checks all adjacent pairs against the floor, checks `ink-muted` still
+      clears AA on each fill, and exits non-zero. Wired into `npm run build`
+      and `npm run check`. Verified to actually fail by reverting one region
+      to its old value — two pairs immediately dropped to 0.0001 and 0.0003.
 - [x] **Great seats outrank ordinary castles** — 105 of 151 confirmed places
       are `Castle`, so Winterfell and Highgarden rendered identically to a
       minor holdfast and the map said nothing about who runs the world.
