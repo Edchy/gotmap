@@ -57,6 +57,26 @@ const ESSOS_PLACES = new Set([
   'Volantis',
 ]);
 
+/**
+ * Misspellings in the upstream `got_locations` layer.
+ *
+ * Kept as an explicit, minimal table rather than fixed by hand in the output:
+ * `prepare-data.mjs` refetches from source, so a hand edit would be silently
+ * undone on the next run. Each entry is a spelling error in the source data,
+ * not an editorial rename — the atlas does not rename places it disagrees
+ * with, it only corrects typos.
+ *
+ * Both were found by checking every place name against a wiki's page index:
+ * a name that matches nothing is usually a name spelled wrong.
+ */
+const NAME_FIXES = new Map([
+  ['Oakensheild', 'Oakenshield'],
+  ["Lort Harroway's Town", "Lord Harroway's Town"],
+]);
+
+const fixName = (name) =>
+  typeof name === 'string' ? (NAME_FIXES.get(name) ?? name) : name;
+
 const fetchLayer = async (file) => {
   const res = await fetch(`${BASE}/${file}.geojson`);
   if (!res.ok) throw new Error(`${file}: HTTP ${res.status}`);
@@ -615,7 +635,7 @@ async function main() {
     .map((f) => ({
       geometry: f.geometry,
       properties: {
-        name: f.properties.name,
+        name: fixName(f.properties.name),
         type: f.properties.type,
         rank: LOCATION_RANK[f.properties.type] ?? 0,
         confirmed: f.properties.confirmed === 1,

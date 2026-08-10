@@ -17,6 +17,15 @@ type PlaceProps = {
   added: boolean;
   /** Why an added point sits where it does. Present only when `added`. */
   note?: string;
+  /**
+   * Title of the wiki page describing this place, if one exists.
+   *
+   * Written by `scripts/check-wiki-links.mjs`, which verifies each name
+   * against the wiki's own index. Absent means no page was found — either the
+   * place is nameless upstream ("Village", "Holdfast") or the wiki simply
+   * lacks it. Either way the UI renders no link rather than guessing at one.
+   */
+  wiki?: string;
 };
 
 type Place = {
@@ -30,7 +39,14 @@ type Place = {
 /** Anything search can take you to. Places, regions and islands, uniformly. */
 type Target =
   | { kind: 'place'; name: string; slug: string; place: Place }
-  | { kind: 'region'; name: string; slug: string; id: number; feature: Feature }
+  | {
+      kind: 'region';
+      name: string;
+      slug: string;
+      id: number;
+      feature: Feature;
+      wiki?: string;
+    }
   | {
       kind: 'island';
       name: string;
@@ -40,6 +56,7 @@ type Target =
       lngLat: [number, number];
       halfWidth: number;
       halfHeight: number;
+      wiki?: string;
     };
 
 const WESTEROS_BOUNDS: [[number, number], [number, number]] = [
@@ -140,6 +157,9 @@ const targets: Target[] = [];
  * or unnamed region simply shows no holder.
  */
 const regionHolder = new Map<string, string>();
+
+/** Region name → its wiki page title, for regions named inside other panels. */
+const regionWiki = new Map<string, string>();
 
 /**
  * Two of the twelve claimants are not houses: the Night's Watch holds the New
@@ -504,6 +524,37 @@ const escape = (s: string | null | undefined) =>
     (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!,
   );
 
+/**
+ * Base URL for wiki articles, e.g. `https://…/wiki/`.
+ *
+ * Read from the data rather than hard-coded: `check-wiki-links.mjs` records
+ * which wiki it verified against, and the two must not drift apart — titles
+ * checked on one wiki pointed at another is exactly the dead link the
+ * allowlist exists to prevent. Empty until the data loads, which is why
+ * `wikiLink` degrades to plain text rather than emitting a bare `href`.
+ */
+let wikiBase = '';
+
+/**
+ * A name, linked to its wiki page when one is known to exist.
+ *
+ * Falls back to plain escaped text otherwise — about a fifth of places have no
+ * page, either because they are nameless upstream ("Village", "Holdfast") or
+ * because the wiki lacks them. Rendering a link that 404s would be the same
+ * failure as presenting a speculative point as confirmed, so the absence is
+ * carried honestly instead.
+ *
+ * `noopener` because `target=_blank` otherwise hands the opened page a
+ * reference back to this one.
+ */
+function wikiLink(name: string, title: string | undefined): string {
+  if (!title || !wikiBase) return escape(name);
+  // Spaces are the only routine difference between a MediaWiki title and its
+  // URL form; encodeURIComponent handles apostrophes and parentheses.
+  const href = wikiBase + encodeURIComponent(title.replace(/ /g, '_'));
+  return `<a class="wiki-link" href="${escape(href)}" target="_blank" rel="noopener">${escape(name)}</a>`;
+}
+
 function openPanel(html: string) {
   panelBody.innerHTML = html;
   panel.hidden = false;
@@ -562,19 +613,21 @@ function showRegion(feature: MapGeoJSONFeature) {
     )
     .join(', ');
 
-  const borders = regionNeighbours(name).join(', ');
+  const borders = regionNeighbours(name)
+    .map((n) => wikiLink(n, regionWiki.get(n)))
+    .join(', ');
 
   select('region', feature.id as number);
   writeUrl(targets.find((t) => t.kind === 'region' && t.name === name) ?? null);
 
   openPanel(`
     <p class="panel__kicker">Region</p>
-    <h2 class="panel__title" id="panel-title">${escape(name)}</h2>
+    <h2 class="panel__title" id="panel-title">${wikiLink(name, regionWiki.get(name))}</h2>
     <dl class="facts">
       <div><dt>Claimed by</dt><dd>${escape(holderName(claimedBy))}</dd></div>
       <div><dt>Settlements</dt><dd>${within.length}</dd></div>
       ${byType ? `<div><dt>Of which</dt><dd>${escape(byType)}</dd></div>` : ''}
-      ${borders ? `<div><dt>Borders</dt><dd>${escape(borders)}</dd></div>` : ''}
+      ${borders ? `<div><dt>Borders</dt><dd>${borders}</dd></div>` : ''}
     </dl>
     ${
       seats.length
@@ -583,7 +636,7 @@ function showRegion(feature: MapGeoJSONFeature) {
              <ul>${seats
                .map(
                  (p) =>
-                   `<li><span>${escape(p.props.name)}</span><em>${escape(p.props.type)}</em></li>`,
+                   `<li><span>${wikiLink(p.props.name, p.props.wiki)}</span><em>${escape(p.props.type)}</em></li>`,
                )
                .join('')}</ul>
            </div>`
@@ -627,9 +680,16 @@ function showPlace(place: Place, featureId: number) {
 
   openPanel(`
     <p class="panel__kicker">${escape(type)}</p>
-    <h2 class="panel__title" id="panel-title">${escape(name)}</h2>
+    <h2 class="panel__title" id="panel-title">${wikiLink(name, place.props.wiki)}</h2>
     <dl class="facts">
-      ${place.region ? `<div><dt>Region</dt><dd>${escape(place.region)}</dd></div>` : ''}
+      ${
+        place.region
+          ? `<div><dt>Region</dt><dd>${wikiLink(
+              place.region,
+              regionWiki.get(place.region),
+            )}</dd></div>`
+          : ''
+      }
       ${holder ? `<div><dt>Held by</dt><dd>${escape(holder)}</dd></div>` : ''}
       ${
         toCapital
@@ -644,7 +704,7 @@ function showPlace(place: Place, featureId: number) {
              <ul>${nearby
                .map(
                  ({ place: p }) =>
-                   `<li><span>${escape(p.props.name)}</span><em>${kmBetween(
+                   `<li><span>${wikiLink(p.props.name, p.props.wiki)}</span><em>${kmBetween(
                      p.lngLat,
                      place.lngLat,
                    ).toLocaleString()} km ${bearingBetween(place.lngLat, p.lngLat)}</em></li>`,
@@ -794,7 +854,7 @@ function showIsland(target: Extract<Target, { kind: 'island' }>) {
 
   openPanel(`
     <p class="panel__kicker">Island</p>
-    <h2 class="panel__title" id="panel-title">${escape(target.name)}</h2>
+    <h2 class="panel__title" id="panel-title">${wikiLink(target.name, target.wiki)}</h2>
     <dl class="facts">
       ${
         on.length
@@ -803,7 +863,7 @@ function showIsland(target: Extract<Target, { kind: 'island' }>) {
       }
       ${
         anchor
-          ? `<div><dt>Nearest seat</dt><dd>${escape(anchor.p.props.name)}, ~${kmBetween(
+          ? `<div><dt>Nearest seat</dt><dd>${wikiLink(anchor.p.props.name, anchor.p.props.wiki)}, ~${kmBetween(
               anchor.p.lngLat,
               target.lngLat,
             ).toLocaleString()} km ${bearingBetween(target.lngLat, anchor.p.lngLat)}</dd></div>`
@@ -817,7 +877,7 @@ function showIsland(target: Extract<Target, { kind: 'island' }>) {
              <ul>${on
                .map(
                  (p) =>
-                   `<li><span>${escape(p.props.name)}</span><em>${escape(p.props.type)}</em></li>`,
+                   `<li><span>${wikiLink(p.props.name, p.props.wiki)}</span><em>${escape(p.props.type)}</em></li>`,
                )
                .join('')}</ul>
            </div>`
@@ -884,6 +944,10 @@ async function loadPlaces() {
   const placeData: FeatureCollection = await placesRes.json();
   const regionData: FeatureCollection = await regionsRes.json();
 
+  // Recorded per collection by check-wiki-links.mjs. All three files carry the
+  // same value; the first one present wins.
+  wikiBase = (placeData as { wikiBase?: string }).wikiBase ?? '';
+
   /*
    * All 205 places are indexed, including the 54 speculative ones.
    *
@@ -891,7 +955,7 @@ async function loadPlaces() {
    * style) — but search covers everything, because "Summerhall" returning no
    * results reads as a broken search rather than as editorial restraint. The
    * distinction is carried in the UI instead: speculative hits are marked in
-   * the result list and the panel says "Placement: Speculative".
+   * the result list, and the panel footnotes the point as inferred.
    *
    * Panels that count settlements must therefore filter by `confirmed`
    * themselves; the index is no longer pre-filtered for them.
@@ -912,6 +976,8 @@ async function loadPlaces() {
     if (!name) continue;
     const claimedBy = feature.properties?.claimedBy as string | undefined;
     if (claimedBy) regionHolder.set(name, holderName(claimedBy));
+    const wiki = feature.properties?.wiki as string | undefined;
+    if (wiki) regionWiki.set(name, wiki);
     regionVertices.set(name, vertexKeys(feature.geometry));
     targets.push({
       kind: 'region',
@@ -919,6 +985,7 @@ async function loadPlaces() {
       slug: slugify(name),
       id: feature.id as number,
       feature,
+      wiki: feature.properties?.wiki as string | undefined,
     });
   }
 
@@ -955,6 +1022,7 @@ async function loadPlaces() {
       lngLat: (feature.geometry as Point).coordinates as [number, number],
       halfWidth: (feature.properties?.halfWidth as number) ?? 0,
       halfHeight: (feature.properties?.halfHeight as number) ?? 0,
+      wiki: feature.properties?.wiki as string | undefined,
     });
   }
 }

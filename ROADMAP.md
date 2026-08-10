@@ -300,6 +300,73 @@ read it as a journey, and the gap is neither small nor uniform: anything separat
 by mountains, water, or a detour around a bay understates the real travel
 considerably.
 
+## 3b. Wiki links from the panel
+
+- [x] **Link panel entries to a wiki page.** `scripts/check-wiki-links.mjs`
+      resolves every place, region and island name against a MediaWiki API and
+      writes the resolved page title onto the feature as `wiki`, plus a
+      `wikiBase` per collection. Names that match no page get no property, and
+      the panel renders those as plain text.
+
+      Linked in every panel: the title, the region a place sits in, the
+      "Borders" list, "Nearby", "Principal seats", "Settlements" and "Nearest
+      seat". 196 of 241 names carry a link; all 196 were re-checked against the
+      API after writing and every one resolves.
+
+      **The allowlist is the whole point.** A link that looks authoritative
+      and 404s is the same failure as presenting a speculative point as
+      confirmed, so the panel must render a link only where a page is known to
+      exist. Checking at build time (rather than from the browser on click)
+      also means the atlas never contacts the wiki at runtime: no round-trip
+      per panel, no loading state, no CORS dependency, and readers of the site
+      make no request to a third party at all.
+
+      **Not wired into `npm run build`, deliberately.** The check is run by a
+      person, and the result is committed; the site never contacts the wiki at
+      runtime. Run it with a contact address:
+
+          WIKI_CONTACT="you@example.com" npm run wiki-links
+
+      `--dry` reports without writing; `--wiki=<host>` picks the wiki.
+
+      **AWOIAF was the first choice and is not usable from a script.**
+      awoiaf.westeros.org is the books wiki, better on register and on book
+      coverage, and its robots.txt disallows several AI crawlers by name — but
+      that turned out not to be the blocker. Cloudflare serves a
+      browser-integrity challenge on *every* path, including the homepage, so
+      any script gets a 403 no matter who runs it or how it identifies itself.
+      Verified from two different environments. Passing that means defeating a
+      bot check rather than asking politely, so the default is Fandom, whose
+      API answers plainly. `--wiki=awoiaf.westeros.org` remains if the
+      challenge is ever dropped.
+
+      **Hit rate: 196/241, 81%.** The misses are not random. Roughly ten are
+      genuinely nameless upstream ("Village", "Holdfast", "Tower", "BWB
+      hideout") and correctly have no page. Most of the rest are book-only
+      places — Whitetree, Rimegate, Icemark, Stonedoor — which is exactly the
+      gap a books wiki would close, and the cost of Fandom being show-focused.
+
+      **Fandom is named as a visual anti-reference in `PRODUCT.md` and
+      `DESIGN.md`.** That objection is to its *design* — dense sidebars, ad
+      slots, nested boxes — not to its facts, and linking out imports none of
+      it. Worth re-reading those entries before anyone concludes the two
+      decisions contradict each other.
+
+      **Stripping a leading "The" is worth the one line.** Checked as a
+      fallback only, after the exact name fails, it rescues the Eyrie, the
+      Twins, the Dreadfort, the Iron Islands and the Bloody Gate — which is to
+      say, the places people actually look up. It is deliberately not fuzzy: a
+      near-match landing on the wrong page is worse than no link, and "Darry"
+      the castle vs "Darry" the house is exactly what a looser rule would get
+      wrong silently.
+
+      Two upstream misspellings were found this way and are now corrected in
+      `NAME_FIXES` in `prepare-data.mjs`: `Oakensheild` → Oakenshield and
+      `Lort Harroway's Town` → Lord Harroway's Town. Both then resolved. A
+      recognisable name in the miss list is usually a typo, not a missing page
+      — which makes this check a spell-checker for the dataset as a side
+      effect.
+
 ## 4. Fixes and gaps
 
 - [ ] **Island region tinting** — Dragonstone and Driftmark render as

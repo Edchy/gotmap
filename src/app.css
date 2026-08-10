@@ -289,6 +289,38 @@ body {
   text-align: right;
 }
 
+/*
+ * Wiki links.
+ *
+ * Only about four in five names have a page, so a link must not shout: if it
+ * did, the panel would read as a grid of buttons with arbitrary holes in it.
+ * The underline is the whole affordance — inherit the colour, keep the weight,
+ * and let a hairline rule in `--rule` say "this one goes somewhere". Brass
+ * arrives on hover, which is where this system puts interactive feedback
+ * (see the colophon) and keeps saturated colour out of the chrome per the
+ * Color-Is-Data rule.
+ */
+.wiki-link {
+  color: inherit;
+  text-decoration: underline;
+  text-decoration-color: var(--rule);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 2px;
+  transition: color var(--dur-fast) var(--ease-out);
+}
+
+.wiki-link:hover,
+.wiki-link:focus-visible {
+  color: var(--brass);
+  text-decoration-color: var(--brass);
+}
+
+/* The panel title is the one place the link may carry a little more weight. */
+.panel__title .wiki-link {
+  text-decoration-color: var(--rule-soft);
+  text-underline-offset: 4px;
+}
+
 /* Provenance note for hand-placed points. Quiet, but present. */
 .panel__note {
   margin: var(--sp-4) 0 0;

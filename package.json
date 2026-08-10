@@ -7,6 +7,7 @@
     "build": "node scripts/validate-style.mjs && tsc --noEmit && vite build",
     "preview": "vite preview",
     "data": "node scripts/prepare-data.mjs",
+    "wiki-links": "node scripts/check-wiki-links.mjs",
     "glyphs": "node scripts/build-glyphs.mjs",
     "check": "node scripts/validate-style.mjs"
   },
