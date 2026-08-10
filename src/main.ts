@@ -131,6 +131,26 @@ const hint = document.querySelector<HTMLElement>('#hint')!;
 
 const places: Place[] = [];
 const targets: Target[] = [];
+/**
+ * Region name → the house that claims it.
+ *
+ * A settlement's allegiance is not in the places data, but it follows from the
+ * region it sits in, which `loadPlaces` already resolves. This is the whole of
+ * that inference: no per-place house is invented, and a place in an unclaimed
+ * or unnamed region simply shows no holder.
+ */
+const regionHolder = new Map<string, string>();
+
+/**
+ * Two of the twelve claimants are not houses: the Night's Watch holds the New
+ * Gift and Bran's Gift, and the Wildlings hold the lands beyond the Wall. The
+ * panel used to prefix every value with "House ", which rendered "House
+ * Night's Watch" and "House Wildlings" — wrong in the one register this
+ * project cares most about being right in.
+ */
+const NOT_A_HOUSE = new Set(["Night's Watch", 'Wildlings']);
+const holderName = (claimedBy: string) =>
+  NOT_A_HOUSE.has(claimedBy) ? claimedBy : `House ${claimedBy}`;
 let hoveredRegion: number | null = null;
 let selectedRegion: number | null = null;
 let selectedPlaceId: number | null = null;
@@ -306,6 +326,174 @@ function search(query: string, limit = 8): Target[] {
     .map((s) => s.target);
 }
 
+/* ------------------------------------------------------------- geography --- */
+
+/**
+ * Kilometres per degree on this map.
+ *
+ * Calibrated against canon rather than assumed: Winterfell → King's Landing is
+ * 23.07° here and about 2,500 km in a straight line — the distance from
+ * Istanbul to St Petersburg, which is the comparison the books invite.
+ *
+ * Taken from the 2,500 km figure directly rather than by converting the 1,550
+ * mile one. The two describe the same distance, but 1,550 mi is itself a
+ * rounded conversion of 2,500 km, so converting it back would bake that
+ * rounding into every distance in the atlas for no reason.
+ *
+ * **This must be calibrated against a straight-line distance, not a road one.**
+ * An earlier value divided the ~1,650-mile Kingsroad *road* distance by the
+ * same 23.07° of straight-line map measurement, charging the road's bends to
+ * the line and inflating every distance by ~5%. A road is always longer than
+ * the line it follows, so the canon figures do not disagree — they measure
+ * different things, and only the straight-line one belongs here.
+ *
+ * This is still an *estimate*: the projection is approximate by construction
+ * (see ROADMAP) and canon distances are themselves loose. The UI rounds and
+ * prefixes "~" accordingly, and says plainly that these are straight lines.
+ */
+const KM_PER_DEGREE = 108.35;
+
+/**
+ * Planar distance in degrees, with longitude scaled by cos(latitude).
+ *
+ * Westeros spans ~-12° to 50° on this map, where a degree of longitude is
+ * between 0.98 and 0.64 of a degree of latitude. Ignoring that overstates
+ * every east-west distance in the North by a third, which is exactly where
+ * the Kingsroad calibration was taken.
+ */
+function degreesBetween(a: [number, number], b: [number, number]): number {
+  const midLat = ((a[1] + b[1]) / 2) * (Math.PI / 180);
+  const dx = (a[0] - b[0]) * Math.cos(midLat);
+  const dy = a[1] - b[1];
+  return Math.hypot(dx, dy);
+}
+
+/** Distance as the UI states it: rounded, estimated, never spuriously precise. */
+function kmBetween(a: [number, number], b: [number, number]): number {
+  const km = degreesBetween(a, b) * KM_PER_DEGREE;
+  // Below 150 km round to 10, above it to 25 — the same relative coarseness
+  // the mile figures had, not the same numbers. Quoting "558 km" from a
+  // hand-drawn map would claim an accuracy the projection cannot support.
+  return km < 150 ? Math.round(km / 10) * 10 : Math.round(km / 25) * 25;
+}
+
+/**
+ * Shown by every panel that quotes a distance.
+ *
+ * Distances here are straight lines between two points, and a reader seeing a
+ * distance next to a place name will otherwise read it as a journey. The gap is
+ * not small or uniform: anything separated by mountains, water or a detour
+ * around a bay understates the real travel considerably, and the Kingsroad
+ * itself runs ~150 km longer than the line it follows. Saying so once, in
+ * the panel that shows the number, is cheaper than being quietly wrong in a
+ * way only a reader who knows the roads would catch.
+ */
+const DISTANCE_CAVEAT =
+  'Distances are straight lines, not travel routes, and approximate.';
+
+const COMPASS = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'] as const;
+
+/** Compass point from `from` to `to`, as one of eight. */
+function bearingBetween(
+  from: [number, number],
+  to: [number, number],
+): (typeof COMPASS)[number] {
+  const midLat = ((from[1] + to[1]) / 2) * (Math.PI / 180);
+  const dx = (to[0] - from[0]) * Math.cos(midLat);
+  const dy = to[1] - from[1];
+  // atan2(dx, dy) measures clockwise from north, which is what a compass does.
+  const deg = (Math.atan2(dx, dy) * (180 / Math.PI) + 360) % 360;
+  return COMPASS[Math.round(deg / 45) % 8];
+}
+
+/**
+ * The settlements a viewer can use to place somewhere they've never heard of.
+ *
+ * This is the panel's answer to the actual question behind most lookups —
+ * "where is this, relative to somewhere I know?" — so it is biased towards
+ * *recognisable* neighbours rather than merely close ones. A minor holdfast
+ * a few km away orients nobody; Winterfell eighty km north does.
+ *
+ * Rank is therefore traded against distance: a place must be within
+ * `RADIUS` degrees, and among those the highest-ranked win, with distance
+ * breaking ties. Speculative points are excluded — they are not drawn on the
+ * map, so offering one as a landmark points at empty ground.
+ */
+const NEIGHBOUR_RADIUS = 6;
+
+function nearbyPlaces(origin: Place, limit = 4) {
+  return places
+    .filter(
+      (p) =>
+        p.id !== origin.id &&
+        p.props.confirmed &&
+        degreesBetween(p.lngLat, origin.lngLat) <= NEIGHBOUR_RADIUS,
+    )
+    .map((p) => ({
+      place: p,
+      degrees: degreesBetween(p.lngLat, origin.lngLat),
+    }))
+    .sort(
+      (a, b) =>
+        b.place.props.rank - a.place.props.rank || a.degrees - b.degrees,
+    )
+    .slice(0, limit)
+    .sort((a, b) => a.degrees - b.degrees);
+}
+
+/** Plurals for the four settlement kinds. Only "City" is irregular. */
+const plural = (type: string) =>
+  (type === 'City' ? 'cities' : `${type.toLowerCase()}s`);
+
+/**
+ * Which regions share a border with this one.
+ *
+ * Computed by shared vertices rather than by true polygon adjacency: the
+ * upstream regions are drawn as a coverage, so neighbours are digitised from
+ * the same boundary line and their rings hold identical coordinate pairs. That
+ * makes an exact-match test both correct and cheap, where a real adjacency
+ * test would mean segment intersection over 12 multipolygons.
+ *
+ * The tradeoff is that a boundary traced twice at slightly different precision
+ * would read as no border at all. `SHARED_VERTICES` guards the other
+ * direction: a single coincidental point (two regions meeting the coast at one
+ * spot) is not a border, so a handful of shared points are required before one
+ * is claimed. Verified against the map — see the counts in ROADMAP.
+ */
+const SHARED_VERTICES = 3;
+
+const regionVertices = new Map<string, Set<string>>();
+
+/** Every coordinate of a geometry, as `x,y` strings for set comparison. */
+function vertexKeys(geom: Geometry): Set<string> {
+  const keys = new Set<string>();
+  const walk = (node: unknown): void => {
+    if (Array.isArray(node) && typeof node[0] === 'number') {
+      const [x, y] = node as [number, number];
+      keys.add(`${x},${y}`);
+      return;
+    }
+    for (const child of node as unknown[]) walk(child);
+  };
+  walk((geom as { coordinates: unknown }).coordinates);
+  return keys;
+}
+
+function regionNeighbours(name: string): string[] {
+  const own = regionVertices.get(name);
+  if (!own) return [];
+  const hits: string[] = [];
+  for (const [other, keys] of regionVertices) {
+    if (other === name) continue;
+    let shared = 0;
+    for (const key of keys) {
+      if (own.has(key) && ++shared >= SHARED_VERTICES) break;
+    }
+    if (shared >= SHARED_VERTICES) hits.push(other);
+  }
+  return hits.sort();
+}
+
 /* ---------------------------------------------------------------- panel --- */
 
 /** Escape for interpolation into markup. Tolerates null/undefined so that one
@@ -343,10 +531,38 @@ function showRegion(feature: MapGeoJSONFeature) {
     claimedBy: string;
   };
 
-  const seats = places
-    .filter((p) => p.region === name && p.props.confirmed && p.props.rank >= 2)
+  const within = places.filter((p) => p.region === name && p.props.confirmed);
+
+  const seats = within
+    .filter((p) => p.props.rank >= 2)
     .sort((a, b) => b.props.rank - a.props.rank)
     .slice(0, 6);
+
+  /*
+   * "Settlements: 34" is a number without a shape. The same count broken into
+   * kinds says something a reader can picture — the Reach is towns and castles,
+   * the North is castles and not much else — and costs one more line.
+   *
+   * Only kinds actually present are listed, in descending significance, so a
+   * region with no cities doesn't advertise "0 cities".
+   *
+   * `Other` must be in the list even though it says little: 25 of the 151
+   * confirmed places carry it, so omitting it made the breakdown disagree with
+   * the total directly above it — Dorne read "19 settlements / 1 town, 17
+   * castles". A breakdown that doesn't add up undermines every other number in
+   * the panel, which is a worse cost than one vague word.
+   */
+  const byType = ['City', 'Town', 'Castle', 'Ruin', 'Other']
+    .map((t) => ({ type: t, n: within.filter((p) => p.props.type === t).length }))
+    .filter((x) => x.n > 0)
+    .map(({ type, n }) =>
+      type === 'Other'
+        ? `${n} other`
+        : `${n} ${n === 1 ? type.toLowerCase() : plural(type)}`,
+    )
+    .join(', ');
+
+  const borders = regionNeighbours(name).join(', ');
 
   select('region', feature.id as number);
   writeUrl(targets.find((t) => t.kind === 'region' && t.name === name) ?? null);
@@ -355,8 +571,10 @@ function showRegion(feature: MapGeoJSONFeature) {
     <p class="panel__kicker">Region</p>
     <h2 class="panel__title" id="panel-title">${escape(name)}</h2>
     <dl class="facts">
-      <div><dt>Claimed by</dt><dd>House ${escape(claimedBy)}</dd></div>
-      <div><dt>Settlements</dt><dd>${places.filter((p) => p.region === name && p.props.confirmed).length}</dd></div>
+      <div><dt>Claimed by</dt><dd>${escape(holderName(claimedBy))}</dd></div>
+      <div><dt>Settlements</dt><dd>${within.length}</dd></div>
+      ${byType ? `<div><dt>Of which</dt><dd>${escape(byType)}</dd></div>` : ''}
+      ${borders ? `<div><dt>Borders</dt><dd>${escape(borders)}</dd></div>` : ''}
     </dl>
     ${
       seats.length
@@ -381,25 +599,76 @@ function showPlace(place: Place, featureId: number) {
   );
 
   const { name, type, confirmed, added, note } = place.props;
-  // Three states, not two: upstream-confirmed, upstream-speculative, and ours.
-  // Presenting our own placement as "confirmed" would overstate the map.
-  const placement = added
-    ? 'Approximate'
-    : confirmed
-      ? 'Confirmed'
-      : 'Speculative';
+  const holder = place.region ? regionHolder.get(place.region) : undefined;
+  const nearby = nearbyPlaces(place);
+
+  /*
+   * Placement used to be a fact row. It was answering a question about the
+   * *dataset* — is this point confirmed, speculative, or ours — in the slot a
+   * reader was scanning for facts about the *place*. Someone pausing an
+   * episode wants to know where Pyke is and who holds it, not our provenance
+   * policy.
+   *
+   * The distinction still matters and is still shown, but as a caveat under
+   * the facts, in the register of a footnote, and only when there is something
+   * to caveat. A confirmed upstream point now says nothing at all, which is
+   * correct: it is the unremarkable case.
+   */
+  const caveat = added
+    ? (note ?? 'Placed by this atlas; approximate.')
+    : !confirmed
+      ? 'Not sited in the source maps. Position is inferred from the text and approximate.'
+      : '';
+
+  const toCapital = capitalDistance(place);
+  // Only caveat distances the panel actually shows. King's Landing itself has
+  // no capital row, and would have no Nearby list if it stood alone.
+  const showsDistance = Boolean(toCapital) || nearby.length > 0;
 
   openPanel(`
     <p class="panel__kicker">${escape(type)}</p>
     <h2 class="panel__title" id="panel-title">${escape(name)}</h2>
     <dl class="facts">
       ${place.region ? `<div><dt>Region</dt><dd>${escape(place.region)}</dd></div>` : ''}
-      <div><dt>Placement</dt><dd>${placement}</dd></div>
+      ${holder ? `<div><dt>Held by</dt><dd>${escape(holder)}</dd></div>` : ''}
+      ${
+        toCapital
+          ? `<div><dt>From King's Landing</dt><dd>${escape(toCapital)}</dd></div>`
+          : ''
+      }
     </dl>
     ${
-      added && note ? `<p class="panel__note">${escape(note)}</p>` : ''
+      nearby.length
+        ? `<div class="listing">
+             <h3>Nearby</h3>
+             <ul>${nearby
+               .map(
+                 ({ place: p }) =>
+                   `<li><span>${escape(p.props.name)}</span><em>${kmBetween(
+                     p.lngLat,
+                     place.lngLat,
+                   ).toLocaleString()} km ${bearingBetween(place.lngLat, p.lngLat)}</em></li>`,
+               )
+               .join('')}</ul>
+           </div>`
+        : ''
     }
+    ${showsDistance ? `<p class="panel__note">${escape(DISTANCE_CAVEAT)}</p>` : ''}
+    ${caveat ? `<p class="panel__note">${escape(caveat)}</p>` : ''}
   `);
+}
+
+/**
+ * Distance to King's Landing, the one place every viewer already knows.
+ *
+ * A single well-chosen reference point does more orienting work than a table
+ * of coordinates, and it is the anchor the show itself uses. Returns empty for
+ * King's Landing so the panel doesn't tell you it is nought km from itself.
+ */
+function capitalDistance(place: Place): string {
+  const capital = places.find((p) => p.props.name === "King's Landing");
+  if (!capital || capital.id === place.id) return '';
+  return `~${kmBetween(place.lngLat, capital.lngLat).toLocaleString()} km ${bearingBetween(capital.lngLat, place.lngLat)}`;
 }
 
 /* ----------------------------------------------------------- navigation --- */
@@ -513,9 +782,34 @@ function showIsland(target: Extract<Target, { kind: 'island' }>) {
     .sort((a, b) => b.props.rank - a.props.rank)
     .slice(0, 6);
 
+  // The nearest settlement of any consequence, which for an uninhabited island
+  // is the only orienting fact available. Islands with their own settlements
+  // get the listing below instead and don't need it.
+  const anchor = on.length
+    ? undefined
+    : places
+        .filter((p) => p.props.confirmed && p.props.rank >= 2)
+        .map((p) => ({ p, d: degreesBetween(p.lngLat, target.lngLat) }))
+        .sort((a, b) => a.d - b.d)[0];
+
   openPanel(`
     <p class="panel__kicker">Island</p>
     <h2 class="panel__title" id="panel-title">${escape(target.name)}</h2>
+    <dl class="facts">
+      ${
+        on.length
+          ? `<div><dt>Settlements</dt><dd>${on.length}</dd></div>`
+          : ''
+      }
+      ${
+        anchor
+          ? `<div><dt>Nearest seat</dt><dd>${escape(anchor.p.props.name)}, ~${kmBetween(
+              anchor.p.lngLat,
+              target.lngLat,
+            ).toLocaleString()} km ${bearingBetween(target.lngLat, anchor.p.lngLat)}</dd></div>`
+          : ''
+      }
+    </dl>
     ${
       on.length
         ? `<div class="listing">
@@ -529,6 +823,7 @@ function showIsland(target: Extract<Target, { kind: 'island' }>) {
            </div>`
         : ''
     }
+    ${anchor ? `<p class="panel__note">${escape(DISTANCE_CAVEAT)}</p>` : ''}
   `);
 }
 
@@ -615,6 +910,9 @@ async function loadPlaces() {
     const name = feature.properties?.name as string | undefined;
     // One political feature is unnamed upstream (the wildling lands).
     if (!name) continue;
+    const claimedBy = feature.properties?.claimedBy as string | undefined;
+    if (claimedBy) regionHolder.set(name, holderName(claimedBy));
+    regionVertices.set(name, vertexKeys(feature.geometry));
     targets.push({
       kind: 'region',
       name,

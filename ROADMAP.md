@@ -261,16 +261,44 @@ that stays out of the way until asked for — not a permanent sidebar.
       horseback, by ship, and on dragonback. This is the item most likely to
       delight, and the one most likely to be quietly wrong.
 
-**Calibration is done:** Winterfell → King's Landing is 23.1° on this map and
-roughly 1,650 miles by the Kingsroad in canon, giving **~71 miles per degree**.
-Sanity check: Oldtown → King's Landing computes to 1,104 miles, which is the
-right order.
+**Calibration is done:** Winterfell → King's Landing is 23.07° on this map and
+about 2,500 km in a straight line — the Istanbul → St Petersburg comparison the
+books invite — giving **~108.35 km per degree**. Sanity check: Oldtown →
+King's Landing computes to ~1,675 km, which is the right order.
+
+**The UI states distances in kilometres.** The constant is taken from the
+2,500 km figure directly, not by converting the 1,550 mi one that usually
+accompanies it: the two describe the same distance, but the mile figure is
+itself a rounded conversion, and round-tripping through it would bake that
+rounding into every distance for nothing. Should miles ever be wanted back
+(or offered as a toggle), convert at the point of display and leave this
+constant alone.
+
+**The calibration distance must be a straight line, not a road.** This was
+first derived as `1,650 Kingsroad miles / 23.07°` = 71 mi/° (≈114 km/°), which
+charges the road's bends to the straight line the map measures and inflated
+every distance in the atlas by ~5%. The canon figures do not disagree — 1,650
+mi by road and 2,500 km direct measure different things, and a road is always
+longer than the line it follows — but only the straight-line one belongs in
+this constant. Winterfell → King's Landing now reads ~2,500 km, as it should.
+
+Note the trap for the travel-times work below: because the old constant was
+road-derived, its numbers *looked* right for the one journey it was calibrated
+on and were wrong everywhere else. Road distance is a separate quantity and
+needs deriving from road geometry, not from a fudged distance-per-degree.
 
 **Caveats to be honest about in the UI:** straight-line distance is not road
 distance, and the map's own projection is approximate (the continents were
 placed on African latitudes to keep Mercator distortion sane, not to be
 accurate). Travel speeds are inferred from the books, not stated. Present
 these as estimates, not facts.
+
+The first of those now ships: every panel that quotes a distance carries
+`DISTANCE_CAVEAT` — "Distances are straight lines, not travel routes, and
+approximate." A reader seeing a distance beside a place name will otherwise
+read it as a journey, and the gap is neither small nor uniform: anything separated
+by mountains, water, or a detour around a bay understates the real travel
+considerably.
 
 ## 4. Fixes and gaps
 
@@ -291,8 +319,66 @@ these as estimates, not facts.
       are `Castle`, so Winterfell and Highgarden currently render identically
       to a minor holdfast. A short hand-authored list promoting the great
       seats would make the map read like the political reality of the world.
-- [ ] **A visual anchor in the panel.** The panel is text-only and sparse,
-      because the data is sparse. Worth solving — but *not* with photographs.
+- [x] **Panel content** — the panel was sparse because it quoted the data
+      rather than using it. The upstream properties are thin (name, type, rank,
+      confirmed) but the *relationships* between features are not, and
+      relationships are what the reader actually came for: `PRODUCT.md` frames
+      the job as "where is this place, and how does it relate to the places I
+      already know?"
+
+      Places now carry region, holding house, distance and bearing to King's
+      Landing, and a "Nearby" list. Regions carry a settlement breakdown by
+      kind and the regions they border. Islands carry a settlement count or,
+      when uninhabited, the nearest seat. All of it derived — nothing about
+      the world is invented.
+
+      **"Placement" was removed.** It answered a question about the *dataset*
+      (confirmed / speculative / ours) in the slot a reader scans for facts
+      about the *place*. The distinction still matters and is still shown, but
+      as a footnote below the facts and only when there is something to
+      caveat — a confirmed upstream point now says nothing, which is the
+      correct amount.
+
+      Three things the work turned up:
+
+      - **`House ${claimedBy}` was wrong on two of twelve regions.** The
+        Night's Watch holds the New Gift and Bran's Gift and the Wildlings
+        hold the lands beyond the Wall, so the panel was rendering "House
+        Night's Watch" and "House Wildlings".
+      - **The type breakdown must include `Other`.** 25 of the 151 confirmed
+        places carry it, so listing only City/Town/Castle/Ruin made the
+        breakdown disagree with the total directly above it (Dorne: "19
+        settlements / 1 town, 17 castles"). A breakdown that doesn't add up
+        costs more than one vague word does.
+      - **Borders come from shared vertices, not polygon adjacency.** The
+        regions are digitised as a coverage, so neighbours share exact
+        coordinate pairs and an equality test is both correct and cheap. Three
+        shared vertices are required, so two regions touching the coast at a
+        single point don't claim a border. Verified against all 12: the Vale
+        borders only the Riverlands, and the Iron Islands border nothing.
+
+      Distances use the **~108.35 km/degree** calibration below, with
+      longitude scaled by cos(latitude) — ignoring that overstates east-west
+      distance in the North by a third, which is where the calibration was
+      taken. Rounded to 10 below 150 km and to 25 above, and prefixed "~":
+      quoting "558 km" off a hand-drawn map claims precision the projection
+      cannot support. Spot-checked against canon: Winterfell → King's Landing
+      ~2,500 km, Oldtown ~1,675 km, and the bearings agree with the map.
+
+      That rounding makes 44 of the 151 confirmed panels repeat a value in
+      their Nearby list (Winterfell shows Barrowton and White Harbor both at
+      625 km). That is rounding working as intended rather than a fault — the
+      bearings still tell the two apart — but it is the thing to look at first
+      if the coarseness ever needs revisiting.
+
+      Rounding and calibration are separate concerns and were kept that way.
+      Rounding governs how much precision is *displayed*; the constant governs
+      whether the number is *centred* correctly. Coarsening the rounding to
+      absorb the old 5% bias would have hidden it rather than fixed it.
+
+- [ ] **A visual anchor in the panel.** The panel is still text-only, and
+      richer text has raised rather than lowered the value of a mark to anchor
+      it. Worth solving — but *not* with photographs.
 
       **Images of places have no usable source.** Show stills or promotional
       art and HBO owns them: the atlas stops being publishable under its
