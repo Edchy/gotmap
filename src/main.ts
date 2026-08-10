@@ -18,6 +18,14 @@ type PlaceProps = {
   /** Why an added point sits where it does. Present only when `added`. */
   note?: string;
   /**
+   * True for the seat of a house that rules one of the map's regions.
+   *
+   * Set in `prepare-data.mjs` from the political layer, not by hand here.
+   * Lifts the nine ruling seats out of the 105 undifferentiated castles, in
+   * label weight, size, ink and reveal zoom.
+   */
+  seat?: boolean;
+  /**
    * Title of the wiki page describing this place, if one exists.
    *
    * Written by `scripts/check-wiki-links.mjs`, which verifies each name
@@ -455,7 +463,11 @@ function nearbyPlaces(origin: Place, limit = 4) {
     }))
     .sort(
       (a, b) =>
-        b.place.props.rank - a.place.props.rank || a.degrees - b.degrees,
+        // A ruling seat is the most orienting neighbour there is, so it wins
+        // a rank tie against an ordinary town of the same rank.
+        Number(b.place.props.seat ?? false) - Number(a.place.props.seat ?? false) ||
+        b.place.props.rank - a.place.props.rank ||
+        a.degrees - b.degrees,
     )
     .slice(0, limit)
     .sort((a, b) => a.degrees - b.degrees);
@@ -584,9 +596,22 @@ function showRegion(feature: MapGeoJSONFeature) {
 
   const within = places.filter((p) => p.region === name && p.props.confirmed);
 
+  /*
+   * The ruling seat leads, then everything else by rank.
+   *
+   * Rank alone put White Harbor above Winterfell in the North: a City
+   * outranks a Castle, and that is the right order for a *map label*, where
+   * the question is which name survives a collision. It is the wrong order
+   * for a list headed "Principal seats", where the seat of the house that
+   * holds the region is the answer and the rest is context.
+   */
   const seats = within
     .filter((p) => p.props.rank >= 2)
-    .sort((a, b) => b.props.rank - a.props.rank)
+    .sort(
+      (a, b) =>
+        Number(b.props.seat ?? false) - Number(a.props.seat ?? false) ||
+        b.props.rank - a.props.rank,
+    )
     .slice(0, 6);
 
   /*

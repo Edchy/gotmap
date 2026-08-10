@@ -382,10 +382,44 @@ considerably.
       and several pairs are identical: desaturated, the political map goes
       flat. Predates the hue/chroma tuning. Fixing it means laddering L per
       region, which trades against the even visual weight the fills have now.
-- [ ] **Great seats outrank ordinary castles** — 105 of 151 confirmed places
-      are `Castle`, so Winterfell and Highgarden currently render identically
-      to a minor holdfast. A short hand-authored list promoting the great
-      seats would make the map read like the political reality of the world.
+- [x] **Great seats outrank ordinary castles** — 105 of 151 confirmed places
+      are `Castle`, so Winterfell and Highgarden rendered identically to a
+      minor holdfast and the map said nothing about who runs the world.
+
+      **Derived from the political layer, not authored by taste.** `GREAT_SEATS`
+      in `prepare-data.mjs` pairs each seat with a house, and every entry must
+      appear as `claimedBy` on a region in `got_politcal` — nine great houses,
+      nine seats. `npm run data` checks both directions on every run and warns
+      if a seat's name stops matching (an upstream rename would otherwise make
+      the promotion silently do nothing) or if its house stops ruling
+      anything. That rule is what keeps the list from drifting into
+      favourites: **Harrenhal is deliberately absent**, being the largest
+      castle in Westeros but the seat of no ruling house.
+
+      The Night's Watch and the Wildlings hold territory but have no seat in
+      the same sense — Castle Black commands the Wall rather than ruling the
+      Gift — so neither is promoted.
+
+      **Promotion is relative to type, not a flat rank.** The first attempt
+      set every seat to rank 5, which put Dragonstone above King's Landing:
+      true to the "one seat per house" rule and wrong on the merits, since the
+      capital of the realm is what a viewer is overwhelmingly more likely to
+      want. `rank = LOCATION_RANK[type] + 1` keeps each seat ahead of the
+      castles around it while leaving cities above castles.
+
+      Carried in `seat`, a boolean of its own rather than left implicit in the
+      rank, because the style branches on it in four places (weight, size, ink,
+      reveal zoom) and `['==', ['get','rank'], 5]` would encode the same fact
+      four times. A seat now reads one step above its type: Medium rather than
+      Regular, full `ink` rather than `ink-muted`, slightly larger, and
+      revealed at z4.4 with the towns instead of z4.9 with the other castles.
+
+      **Rank is the wrong sort for a list headed "Principal seats".** Rank
+      answers "which label survives a collision", where a City beats a Castle
+      — correct for the map, but it put White Harbor above Winterfell in the
+      North. Both panel lists now break ties on `seat` first. A side effect
+      worth having: King's Landing's "Nearby" now surfaces Storm's End instead
+      of Spicetown.
 - [x] **Panel content** — the panel was sparse because it quoted the data
       rather than using it. The upstream properties are thin (name, type, rank,
       confirmed) but the *relationships* between features are not, and

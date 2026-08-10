@@ -266,6 +266,72 @@ function labelAnchor(geometry) {
 const LOCATION_RANK = { City: 4, Town: 3, Castle: 2, Ruin: 1, Other: 0 };
 
 /**
+ * The seats of the houses that rule the regions this map draws.
+ *
+ * 105 of the 151 confirmed places are `Castle`, so without this Winterfell
+ * renders identically to a holdfast nobody has heard of and the map fails to
+ * say anything about who runs the world. The upstream data has no field for
+ * it: `size` is redundant with `type`, and `type` cannot distinguish a
+ * kingdom's capital from a minor keep.
+ *
+ * **Derived from the political layer, not from taste.** Every entry is the
+ * canonical seat of a house that appears as `claimedBy` on a region in
+ * `got_politcal` — nine great houses, nine seats, checked against that layer
+ * at build time so the two cannot drift apart. That rule is what keeps this
+ * from becoming a list of personal favourites: Harrenhal is the largest
+ * castle in Westeros and is *not* here, because no region is held by its
+ * ruined house.
+ *
+ * The Night's Watch and the Wildlings also hold territory but have no seat in
+ * the same sense — Castle Black commands the Wall rather than ruling the
+ * Gift — so neither is promoted. They keep the Wall, which the map already
+ * draws from the opening view.
+ */
+const GREAT_SEATS = new Map([
+  ['Winterfell', 'Stark'],
+  ['Casterly Rock', 'Lannister'],
+  ['Highgarden', 'Tyrell'],
+  ['Riverrun', 'Tully'],
+  ["Storm's End", 'Baratheon'],
+  ['Sunspear', 'Martell'],
+  ['The Eyrie', 'Arryn'],
+  ['Pyke', 'Greyjoy'],
+  // The Targaryen seat. King's Landing is the Crownlands' city and already a
+  // City; Dragonstone is the ancestral seat and is the one that needs lifting.
+  ['Dragonstone', 'Targaryen'],
+]);
+
+/**
+ * Rank and seat flag for a place.
+ *
+ * A great seat is promoted to rank 5 — above City (4), because a kingdom's
+ * capital outranks an ordinary city in political weight even when it is
+ * smaller. Rank drives `symbol-sort-key`, so this also decides who survives a
+ * label collision: Winterfell now wins against the holdfasts around it.
+ *
+ * `seat` is emitted as its own boolean rather than left implicit in the rank,
+ * because the style needs to branch on "is this a great seat" for size and
+ * colour, and `['==', ['get', 'rank'], 5]` in five places would encode the
+ * same fact five times.
+ */
+const seatProps = (name, type) => {
+  if (!GREAT_SEATS.has(name)) {
+    return { rank: LOCATION_RANK[type] ?? 0, seat: false };
+  }
+  /*
+   * A seat is promoted to *one above its own type*, not to a flat 5.
+   *
+   * A flat 5 put Dragonstone above King's Landing, which is the wrong claim:
+   * it is the ancestral Targaryen seat, but the capital of the realm is the
+   * place a viewer is overwhelmingly more likely to want, and a mostly-empty
+   * island castle outranking it overstates the case. Promoting relative to
+   * type keeps every seat ahead of the ordinary castles around it while
+   * leaving cities above castles, which is the order the world actually has.
+   */
+  return { rank: (LOCATION_RANK[type] ?? 0) + 1, seat: true };
+};
+
+/**
  * Known gaps in the upstream dataset, reported after each run so they aren't
  * mistaken for pipeline bugs. Casterly Rock is genuinely absent upstream.
  */
@@ -632,16 +698,19 @@ async function main() {
     // One upstream location has a null name. An unnamed point can't be
     // labelled or searched for, so it is dropped rather than rendered blank.
     .filter((f) => typeof f.properties.name === 'string' && f.properties.name)
-    .map((f) => ({
-      geometry: f.geometry,
-      properties: {
-        name: fixName(f.properties.name),
-        type: f.properties.type,
-        rank: LOCATION_RANK[f.properties.type] ?? 0,
-        confirmed: f.properties.confirmed === 1,
-        added: false,
-      },
-    }));
+    .map((f) => {
+      const name = fixName(f.properties.name);
+      return {
+        geometry: f.geometry,
+        properties: {
+          name,
+          type: f.properties.type,
+          ...seatProps(name, f.properties.type),
+          confirmed: f.properties.confirmed === 1,
+          added: false,
+        },
+      };
+    });
 
   const additions = additionsRaw.places;
 
@@ -652,7 +721,9 @@ async function main() {
       properties: {
         name: a.name,
         type: a.type,
-        rank: LOCATION_RANK[a.type] ?? 0,
+        // Casterly Rock is both hand-placed and a great seat; the promotion
+        // has to apply here too or the Lannister seat alone stays a holdfast.
+        ...seatProps(a.name, a.type),
         confirmed: true,
         // Flags this point as ours rather than cadaei's, so the distinction
         // stays visible in the data and can be surfaced in the UI.
@@ -737,6 +808,37 @@ async function main() {
   const absent = EXPECTED_PLACES.filter((n) => !names.has(n));
   if (absent.length) {
     console.log(`still absent: ${absent.join(', ')}`);
+  }
+
+  /*
+   * The great-seat list is only defensible if every entry is the seat of a
+   * house that actually rules a region here. Checking it against the political
+   * layer on every run is what stops it drifting into a list of favourites —
+   * and catches the likelier failure, a seat whose name stops matching after
+   * an upstream rename.
+   */
+  const claimants = new Set(
+    regions.features.map((f) => f.properties.claimedBy).filter(Boolean),
+  );
+  const promoted = places.features.filter((f) => f.properties.seat);
+  const unmatched = [...GREAT_SEATS].filter(([n]) => !names.has(n));
+  const unruled = [...GREAT_SEATS].filter(([, h]) => !claimants.has(h));
+
+  console.log(
+    `\ngreat seats: ${promoted.length}/${GREAT_SEATS.size} promoted ` +
+      `(${promoted.map((f) => f.properties.name).join(', ')})`,
+  );
+  if (unmatched.length) {
+    console.log(
+      `  WARNING no such place: ${unmatched.map(([n]) => n).join(', ')} ` +
+        `— renamed upstream? the promotion silently does nothing`,
+    );
+  }
+  if (unruled.length) {
+    console.log(
+      `  WARNING house rules no region: ${unruled.map(([, h]) => h).join(', ')} ` +
+        `— the seat no longer follows from the political layer`,
+    );
   }
 }
 

@@ -36,8 +36,14 @@ wiki's API and writes the resolved title onto each feature. Names with no page
 render as plain text, because a link that looks authoritative and 404s is the
 same failure as presenting a speculative point as confirmed.
 
-That guarantee is a property of the *check*, not of the data. Pages get
-renamed, merged and deleted, and **nothing in the app will tell you when a
+**`npm run data` erases the annotations — always re-run this after it.** The
+prepare step rewrites the same files from upstream, which has no notion of a
+wiki page, so the `wiki` properties vanish silently and every name in the panel
+reverts to plain text. Nothing errors; the links simply stop being there. The
+order is `npm run data` **then** `npm run wiki-links`.
+
+The guarantee is otherwise a property of the *check*, not of the data. Pages
+get renamed, merged and deleted, and **nothing in the app will tell you when a
 link dies** — the site never contacts the wiki at runtime, which is the point.
 Re-run it periodically, and after any change to place names:
 
@@ -149,7 +155,7 @@ before it:
 | 2.7 – 3.4 | Land, region colours, water. **No labels.** |
 | 3.4 – 3.9 | Region names, alone |
 | 3.9 – 4.4 | Cities join |
-| 4.4 → 5.8 | Towns, then castles, then everything |
+| 4.4 → 5.8 | Towns **and the nine ruling seats**, then castles, then everything |
 | 4.6 → 6.2 | Roads: the named highways first, lesser tracks from 5.4 |
 
 **The Wall is the one exception to all of this** — drawn from the opening view,
@@ -226,6 +232,11 @@ Worth knowing before you trust a field:
   being redrawn above God's Eye.
 - **One political feature has a null name** (the wildling lands) and one
   location has none (dropped — an unnamed point cannot be labelled or found).
+- **Nothing marks a great seat.** 105 of the 151 confirmed places are
+  `Castle`, and `type` cannot tell a kingdom's capital from a minor keep
+  (`size` is redundant with `type`, so it does not help either). `GREAT_SEATS`
+  in `prepare-data.mjs` supplies it, cross-checked against the `claimedBy`
+  field on the regions so the two cannot drift apart.
 
 ### Our own additions
 

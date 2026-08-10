@@ -44,12 +44,31 @@ const regionTint = (): ExpressionSpecification => [
  * the scale; castles and ruins recede. Weight and size do the work — colour is
  * reserved for data (The Color-Is-Data Rule).
  */
+/**
+ * A great seat reads one step above its own type.
+ *
+ * 105 of the 151 confirmed places are `Castle`, so type alone cannot say that
+ * Winterfell runs the North and Torrhen's Square does not. `seat` (set in
+ * prepare-data.mjs from the political layer) lifts the nine ruling seats out
+ * of that undifferentiated mass.
+ *
+ * The lift is deliberately *one step*, not a new tier of its own: a seat gets
+ * the size and ink of a Town where it would otherwise be a Castle, and Oldtown
+ * — a City that is not a ruling seat — still outranks it in size. The
+ * political point is made by weight and by collision priority, not by making
+ * nine castles shout.
+ */
+const seatOr = (
+  seatValue: number,
+  fallback: ExpressionSpecification | number,
+): ExpressionSpecification => ['case', ['get', 'seat'], seatValue, fallback];
+
 const LABEL_SIZE: ExpressionSpecification = [
   'interpolate',
   ['linear'],
   ['zoom'],
-  3, ['match', ['get', 'type'], 'City', 12, 'Town', 10, 9],
-  7, ['match', ['get', 'type'], 'City', 16, 'Town', 14, 12.5],
+  3, seatOr(11, ['match', ['get', 'type'], 'City', 12, 'Town', 10, 9]),
+  7, seatOr(15, ['match', ['get', 'type'], 'City', 16, 'Town', 14, 12.5]),
 ];
 
 /**
@@ -64,16 +83,28 @@ const LABEL_SIZE: ExpressionSpecification = [
  * and halo instead. See README.
  */
 const LABEL_FONT: ExpressionSpecification = [
-  'match',
-  ['get', 'type'],
-  'City', ['literal', ['Inter SemiBold']],
-  'Town', ['literal', ['Inter Medium']],
-  ['literal', ['Inter Regular']],
+  'case',
+  // A seat is set in Medium, the weight a Town gets — one step up from the
+  // Regular the other castles share, and still below a City's SemiBold.
+  // `seat` is a plain data property, so this is legal in a layout expression
+  // where feature-state would not be (see the note on weight below).
+  ['get', 'seat'], ['literal', ['Inter Medium']],
+  [
+    'match',
+    ['get', 'type'],
+    'City', ['literal', ['Inter SemiBold']],
+    'Town', ['literal', ['Inter Medium']],
+    ['literal', ['Inter Regular']],
+  ],
 ];
 
 const LABEL_COLOR: ExpressionSpecification = [
   'case',
   ['boolean', ['feature-state', 'selected'], false], token('brass'),
+  // A ruling seat is set in full ink like a city, not the muted grey the other
+  // 96 castles share. This is the value channel doing the work the Value-First
+  // Rule asks for: the distinction survives being converted to greyscale.
+  ['get', 'seat'], token('ink'),
   ['match', ['get', 'type'], 'City', token('ink'), 'Town', token('ink'), token('ink-muted')],
 ];
 
@@ -151,7 +182,14 @@ const REVEAL_AT_ZOOM: ExpressionSpecification = [
    */
   0,
   3.9, visible(['match', ['get', 'type'], 'City', 1, 0]),
-  4.4, visible(['match', ['get', 'type'], 'City', 1, 'Town', 1, 0]),
+  /*
+   * The ruling seats arrive with the towns, a full step before the other 96
+   * castles. Whoever pauses an episode to ask where somewhere is is far more
+   * likely to mean Winterfell than a holdfast, so the seats should be on
+   * screen before the field fills in around them — and the political shape of
+   * the continent reads at a zoom where 105 identical castles would not.
+   */
+  4.4, visible(['case', ['get', 'seat'], 1, ['match', ['get', 'type'], 'City', 1, 'Town', 1, 0]]),
   4.9, visible(['match', ['get', 'type'], 'City', 1, 'Town', 1, 'Castle', 1, 0]),
   5.4, visible(['match', ['get', 'type'], 'Other', 0, 1]),
   5.8, visible(1),
@@ -858,8 +896,8 @@ export function buildStyle(): StyleSpecification {
           // do, so these sit back down where a map mark belongs.
           'icon-size': [
             'interpolate', ['linear'], ['zoom'],
-            3, ['match', ['get', 'type'], 'City', 0.5, 'Town', 0.45, 'Other', 0.38, 0.42],
-            7, ['match', ['get', 'type'], 'City', 0.72, 'Town', 0.64, 'Other', 0.52, 0.6],
+            3, seatOr(0.48, ['match', ['get', 'type'], 'City', 0.5, 'Town', 0.45, 'Other', 0.38, 0.42]),
+            7, seatOr(0.7, ['match', ['get', 'type'], 'City', 0.72, 'Town', 0.64, 'Other', 0.52, 0.6]),
           ],
           // The icon is the anchor for the label, so it must never be dropped
           // by collision — the label moves around it instead.
@@ -871,6 +909,7 @@ export function buildStyle(): StyleSpecification {
           'icon-color': [
             'case',
             ['boolean', ['feature-state', 'selected'], false], token('brass'),
+            ['get', 'seat'], token('ink'),
             ['match', ['get', 'type'],
               'City', token('ink'),
               'Town', token('ink'),
