@@ -165,6 +165,9 @@ app.innerHTML = `
   <div class="hint" id="hint" role="status" aria-live="polite"></div>
 
   <aside class="panel" id="panel" aria-labelledby="panel-title" aria-live="polite" hidden>
+    <div class="panel__drag-region" id="panel-drag-region" aria-hidden="true">
+      <span class="panel__grabber"></span>
+    </div>
     <button class="panel__close" id="panel-close" aria-label="Close">
       <svg viewBox="0 0 16 16" aria-hidden="true" width="14" height="14">
         <path d="M3 3 L13 13 M13 3 L3 13" stroke="currentColor" stroke-width="1.4" fill="none"/>
@@ -230,6 +233,7 @@ document.addEventListener('pointerdown', (event) => {
 
 const panel = document.querySelector<HTMLElement>('#panel')!;
 const panelBody = document.querySelector<HTMLElement>('#panel-body')!;
+const panelDragRegion = document.querySelector<HTMLElement>('#panel-drag-region')!;
 const hint = document.querySelector<HTMLElement>('#hint')!;
 const loadNotice = document.querySelector<HTMLElement>('#load-notice')!;
 const loadNoticeText = document.querySelector<HTMLElement>('#load-notice-text')!;
@@ -711,7 +715,10 @@ function wikiLink(name: string, title: string | undefined): string {
 let panelReturnFocus: HTMLElement | null = null;
 
 function openPanel(html: string) {
+  panel.classList.remove('is-dragging');
+  panel.style.removeProperty('--panel-drag-y');
   panelBody.innerHTML = html;
+  panelBody.scrollTop = 0;
   panel.hidden = false;
   // Force reflow so the transition runs from the hidden state.
   void panel.offsetWidth;
@@ -719,19 +726,100 @@ function openPanel(html: string) {
 }
 
 function closePanel(restoreFocus = false) {
+  panel.classList.remove('is-dragging');
   panel.classList.remove('is-open');
   writeUrl(null);
   select(null);
-  const done = () => {
-    if (!panel.classList.contains('is-open')) panel.hidden = true;
+  const done = (event?: TransitionEvent) => {
+    if (event && event.target !== panel) return;
+    const stayedClosed = !panel.classList.contains('is-open');
+    if (stayedClosed) {
+      panel.hidden = true;
+      panel.style.removeProperty('--panel-drag-y');
+    }
     panel.removeEventListener('transitionend', done);
-    if (restoreFocus && panelReturnFocus?.isConnected) panelReturnFocus.focus();
-    if (restoreFocus) panelReturnFocus = null;
+    if (stayedClosed && restoreFocus && panelReturnFocus?.isConnected) {
+      panelReturnFocus.focus();
+    }
+    if (stayedClosed && restoreFocus) panelReturnFocus = null;
   };
   panel.addEventListener('transitionend', done);
   // Reduced-motion collapses transitions to ~0ms, so guarantee the hide.
   setTimeout(done, 500);
 }
+
+const mobilePanel = window.matchMedia('(max-width: 40rem)');
+let panelDrag:
+  | {
+      pointerId: number;
+      startY: number;
+      distance: number;
+      lastY: number;
+      lastTime: number;
+      velocity: number;
+    }
+  | undefined;
+
+panelDragRegion.addEventListener('pointerdown', (event) => {
+  if (
+    !mobilePanel.matches ||
+    !event.isPrimary ||
+    event.button !== 0 ||
+    !panel.classList.contains('is-open')
+  ) {
+    return;
+  }
+
+  panelDrag = {
+    pointerId: event.pointerId,
+    startY: event.clientY,
+    distance: 0,
+    lastY: event.clientY,
+    lastTime: event.timeStamp,
+    velocity: 0,
+  };
+  panel.classList.add('is-dragging');
+  panelDragRegion.setPointerCapture(event.pointerId);
+});
+
+panelDragRegion.addEventListener('pointermove', (event) => {
+  if (!panelDrag || event.pointerId !== panelDrag.pointerId) return;
+
+  const elapsed = event.timeStamp - panelDrag.lastTime;
+  if (elapsed > 0) {
+    panelDrag.velocity = (event.clientY - panelDrag.lastY) / elapsed;
+  }
+  panelDrag.lastY = event.clientY;
+  panelDrag.lastTime = event.timeStamp;
+  panelDrag.distance = Math.max(0, event.clientY - panelDrag.startY);
+  panel.style.setProperty('--panel-drag-y', `${panelDrag.distance}px`);
+});
+
+function finishPanelDrag(event: PointerEvent, cancelled = false) {
+  if (!panelDrag || event.pointerId !== panelDrag.pointerId) return;
+
+  const { distance, velocity } = panelDrag;
+  panelDrag = undefined;
+  panel.classList.remove('is-dragging');
+
+  if (panelDragRegion.hasPointerCapture(event.pointerId)) {
+    panelDragRegion.releasePointerCapture(event.pointerId);
+  }
+
+  const passedDistance = distance >= Math.min(112, panel.offsetHeight * 0.28);
+  const wasFlicked = distance >= 28 && velocity >= 0.65;
+  if (!cancelled && (passedDistance || wasFlicked)) {
+    closePanel();
+    return;
+  }
+
+  panel.style.setProperty('--panel-drag-y', '0px');
+}
+
+panelDragRegion.addEventListener('pointerup', (event) => finishPanelDrag(event));
+panelDragRegion.addEventListener('pointercancel', (event) =>
+  finishPanelDrag(event, true),
+);
 
 function showRegion(feature: MapGeoJSONFeature) {
   const { name, claimedBy } = feature.properties as {
@@ -968,45 +1056,67 @@ function detailCameraPadding() {
 }
 
 /**
- * Fly to a target and open its panel. The single path shared by search, deep
- * links and (for regions) nothing else — clicks resolve their own feature
- * from the rendered map, which search cannot do because the target may be
- * off-screen or below its label's zoom threshold.
+ * Fly to a target and optionally open its panel. Search on mobile uses this as
+ * a locator only; deep links and desktop search also reveal the details.
  */
-function goTo(target: Target, animate = true) {
+function goTo(target: Target, animate = true, showDetails = true) {
   // Feature state needs a loaded style (see setFeatureState). A deep link
   // resolves before the first render, so defer rather than lose the highlight.
   if (!map.isStyleLoaded()) {
-    map.once('idle', () => goTo(target, animate));
+    map.once('idle', () => goTo(target, animate, showDetails));
     return;
   }
+
+  if (!showDetails) closePanel();
 
   const motion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   const fly = (opts: { center: [number, number]; zoom: number }) =>
     animate && !motion ? map.flyTo(opts) : map.jumpTo(opts);
+  const padding = showDetails
+    ? detailCameraPadding()
+    : mobilePanel.matches
+      ? { top: 48, bottom: 88, left: 20, right: 20 }
+      : { top: 72, bottom: 72, left: 48, right: 48 };
+  const selectWithoutDetails = () => {
+    if (target.kind === 'region') select('region', target.id);
+    else if (target.kind === 'island') select('island', target.id);
+    else if (target.place.props.confirmed) select('place', target.place.id);
+    else {
+      select(null);
+      hint.textContent = 'Exact location unknown — select its region for context';
+      hint.classList.add('is-visible');
+      setTimeout(() => hint.classList.remove('is-visible'), 4200);
+    }
+    writeUrl(target);
+  };
 
   if (target.kind === 'region') {
     // A region is an area, so frame the whole thing rather than its centre.
     map.fitBounds(geometryBounds(target.feature.geometry), {
-      padding: detailCameraPadding(),
+      padding,
       animate: animate && !motion,
     });
     const feature = map
       .querySourceFeatures('regions')
       .find((f) => f.id === target.id);
     // The panel needs a feature for its properties; the source copy will do.
-    showRegion(
-      (feature ?? {
-        id: target.id,
-        properties: target.feature.properties,
-      }) as MapGeoJSONFeature,
-    );
+    if (showDetails) {
+      showRegion(
+        (feature ?? {
+          id: target.id,
+          properties: target.feature.properties,
+        }) as MapGeoJSONFeature,
+      );
+    } else {
+      selectWithoutDetails();
+    }
     return;
   }
 
   if (target.kind === 'island') {
     fly({ center: target.lngLat, zoom: ISLAND_ZOOM });
-    showIsland(target);
+    if (showDetails) showIsland(target);
+    else selectWithoutDetails();
     return;
   }
 
@@ -1017,18 +1127,20 @@ function goTo(target: Target, animate = true) {
     );
     if (region) {
       map.fitBounds(geometryBounds(region.feature.geometry), {
-        padding: detailCameraPadding(),
+        padding,
         animate: animate && !motion,
       });
     } else {
       fitWesteros(animate && !motion);
     }
-    showPlace(target.place, target.place.id);
+    if (showDetails) showPlace(target.place, target.place.id);
+    else selectWithoutDetails();
     return;
   }
 
   fly({ center: target.place.lngLat, zoom: placeZoom(target.place) });
-  showPlace(target.place, target.place.id);
+  if (showDetails) showPlace(target.place, target.place.id);
+  else selectWithoutDetails();
 }
 
 /**
@@ -1422,10 +1534,11 @@ window.addEventListener('resize', () => {
   resizeTimer = window.setTimeout(() => map.resize(), 120);
 });
 
-/** Both place layers are clickable; the dot is the more forgiving target. */
+/** Every visible place label is clickable; the dot is the forgiving target. */
 const PLACE_LAYERS = ['place-dot', 'place-label', 'selected-place-label'];
+const ISLAND_LAYERS = ['island-label'];
 
-for (const layer of PLACE_LAYERS) {
+for (const layer of [...PLACE_LAYERS, ...ISLAND_LAYERS]) {
   map.on('mouseenter', layer, () => {
     map.getCanvas().style.cursor = 'pointer';
   });
@@ -1465,6 +1578,21 @@ map.on('click', (e: MapMouseEvent) => {
     const name = placeHit.properties?.name as string;
     const place = places.find((p) => p.props.name === name);
     if (place) showPlace(place, placeHit.id as number);
+    return;
+  }
+
+  const islandHit = map.queryRenderedFeatures(e.point, {
+    layers: ISLAND_LAYERS,
+  })[0];
+
+  if (islandHit) {
+    panelReturnFocus = map.getCanvas();
+    const name = islandHit.properties?.name as string;
+    const island = targets.find(
+      (target): target is Extract<Target, { kind: 'island' }> =>
+        target.kind === 'island' && target.name === name,
+    );
+    if (island) showIsland(island);
     return;
   }
 
@@ -1545,7 +1673,9 @@ function renderResults() {
   searchResults.hidden = false;
   searchInput.setAttribute('aria-expanded', 'true');
   if (active >= 0) {
-    searchInput.setAttribute('aria-activedescendant', `search-result-${active}`);
+    const activeId = `search-result-${active}`;
+    searchInput.setAttribute('aria-activedescendant', activeId);
+    document.getElementById(activeId)?.scrollIntoView({ block: 'nearest' });
   } else {
     searchInput.removeAttribute('aria-activedescendant');
   }
@@ -1564,7 +1694,9 @@ function commit(index: number) {
   searchInput.value = target.name;
   searchInput.blur();
   closeResults();
-  goTo(target);
+  // On a phone search is a locator, not an implicit request for a detail
+  // sheet. The selected mark remains highlighted; tapping it opens details.
+  goTo(target, true, !mobilePanel.matches);
 }
 
 searchInput.addEventListener('input', () => {
