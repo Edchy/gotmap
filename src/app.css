@@ -4,10 +4,15 @@
   box-sizing: border-box;
 }
 
+[hidden] {
+  display: none !important;
+}
+
 html,
 body,
 #app {
   height: 100%;
+  height: 100dvh;
   margin: 0;
 }
 
@@ -28,49 +33,44 @@ body {
 :where(a, button):focus-visible {
   outline: 2px solid var(--brass);
   outline-offset: 2px;
-  border-radius: 2px;
+  border-radius: calc(var(--radius) - var(--sp-1));
 }
 
-/* ------------------------------------------------------------ masthead --- */
-/* Editorial: a title set in the corner like a plate, not a nav bar. */
+/* -------------------------------------------------------- control bar --- */
+/* One quiet instrument surface: identity, search, zoom and attribution. */
 
-.masthead {
+.control-bar {
   position: absolute;
-  top: var(--sp-5);
-  left: var(--sp-5);
-  z-index: var(--z-chrome);
-  pointer-events: none;
+  top: max(var(--sp-5), env(safe-area-inset-top));
+  left: max(var(--sp-5), env(safe-area-inset-left));
+  z-index: var(--z-focus);
+  display: flex;
+  align-items: stretch;
+  width: min(42.75rem, calc(100vw - 3rem));
+  min-height: 2.75rem;
+  background: color-mix(in oklab, var(--sea-deep) 96%, transparent);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-panel);
 }
 
-.masthead h1 {
+.wordmark {
+  display: flex;
+  flex: none;
+  align-items: center;
   margin: 0;
-  font: var(--text-display);
-  letter-spacing: -0.02em;
-  text-wrap: balance;
-}
-
-.masthead p {
-  margin: var(--sp-1) 0 0;
-  font: var(--text-micro);
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
-  color: var(--ink-muted);
+  padding: 0 var(--sp-4);
+  font: var(--text-label);
+  font-weight: 650;
+  letter-spacing: -0.01em;
+  white-space: nowrap;
 }
 
 /* -------------------------------------------------------------- search --- */
-/*
- * One field under the masthead, sharing the panel's surface so the two read as
- * the same system. Chrome is guilty until proven necessary (PRODUCT.md): the
- * field is quiet until focused, the result list exists only while typing, and
- * there is no button, no icon and no permanent sidebar.
- */
 
 .search {
-  position: absolute;
-  top: calc(var(--sp-5) + 4.5rem);
-  left: var(--sp-5);
-  z-index: var(--z-chrome);
-  width: min(17rem, calc(100vw - 3rem));
+  position: relative;
+  flex: 1;
+  min-width: 10rem;
 }
 
 /* Visible to screen readers only: the placeholder carries the visual label. */
@@ -85,19 +85,32 @@ body {
   white-space: nowrap;
 }
 
+.search__icon {
+  position: absolute;
+  top: 50%;
+  left: var(--sp-3);
+  z-index: 1;
+  translate: 0 -50%;
+  color: var(--ink-faint);
+  pointer-events: none;
+  transition: color var(--dur-fast) var(--ease-out);
+}
+
+.search:focus-within .search__icon {
+  color: var(--ink-muted);
+}
+
 .search__input {
   width: 100%;
-  padding: var(--sp-2) var(--sp-3);
+  height: 100%;
+  min-height: 2.625rem;
+  padding: 0 var(--sp-3) 0 2.125rem;
   font: var(--text-label);
   color: var(--ink);
-  /* Barely there at rest: the map is the subject, and an unused field should
-     not read as a filled box sitting on top of it. Weight arrives on focus. */
-  background: color-mix(in oklab, var(--sea-deep) 55%, transparent);
-  border: 1px solid var(--rule-soft);
-  border-radius: var(--radius);
-  transition:
-    border-color var(--dur) var(--ease-out),
-    background var(--dur) var(--ease-out);
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  transition: background var(--dur) var(--ease-out);
 }
 
 /* The browser default is a system blue/orange that belongs to no palette here. */
@@ -107,18 +120,24 @@ body {
 }
 
 .search__input::placeholder {
-  color: var(--ink-faint);
+  color: var(--ink-muted);
+  opacity: 1;
 }
 
 .search__input:hover {
-  border-color: var(--rule);
+  background: color-mix(in oklab, var(--land) 35%, transparent);
+}
+
+.search__input:disabled {
+  cursor: progress;
+  opacity: 1;
 }
 
 /* Brass is the single accent, and focus is where it earns its keep. */
 .search__input:focus-visible {
   outline: none;
-  border-color: var(--brass-dim);
-  background: color-mix(in oklab, var(--sea-deep) 94%, transparent);
+  background: color-mix(in oklab, var(--land) 48%, transparent);
+  box-shadow: inset 0 0 0 1px var(--brass-dim);
 }
 
 /* Safari shows its own clear affordance; the Escape key is the documented one. */
@@ -127,32 +146,52 @@ body {
 }
 
 .search__results {
-  margin: var(--sp-2) 0 0;
-  padding: 0;
+  position: absolute;
+  top: calc(100% + var(--sp-2));
+  right: 0;
+  left: 0;
+  margin: 0;
+  padding: var(--sp-1);
   list-style: none;
   background: color-mix(in oklab, var(--sea-deep) 94%, transparent);
-  border: 1px solid var(--rule-soft);
   border-radius: var(--radius);
   box-shadow: var(--shadow-panel);
   overflow: hidden;
 }
 
+.search__empty {
+  position: absolute;
+  top: calc(100% + var(--sp-2));
+  right: 0;
+  left: 0;
+  margin: 0;
+  padding: var(--sp-3);
+  font: var(--text-label);
+  color: var(--ink-muted);
+  background: color-mix(in oklab, var(--sea-deep) 96%, transparent);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-panel);
+}
+
 .search__result {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
   gap: var(--sp-2);
   align-items: baseline;
   padding: var(--sp-2) var(--sp-3);
   font: var(--text-label);
   color: var(--ink-muted);
+  border-radius: calc(var(--radius) - var(--sp-1));
   cursor: pointer;
 }
 
 .search__result + .search__result {
-  border-top: 1px solid var(--rule-soft);
+  margin-top: 1px;
 }
 
 .search__result span {
-  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
   color: var(--ink);
 }
 
@@ -161,11 +200,12 @@ body {
   font-style: normal;
   letter-spacing: 0.1em;
   text-transform: uppercase;
-  color: var(--ink-faint);
+  color: var(--ink-muted);
 }
 
-/* Speculative placements are findable, but never presented as settled. */
+/* Unsited places are findable, but never presented as precisely mapped. */
 .search__result .search__flag {
+  grid-column: 1 / -1;
   color: var(--brass-dim);
 }
 
@@ -174,18 +214,168 @@ body {
   background: color-mix(in oklab, var(--land-high) 60%, transparent);
 }
 
-@media (max-width: 40rem) {
-  /* The masthead stacks tighter on small screens; follow it down. */
-  .search {
-    top: calc(var(--sp-5) + 3.75rem);
-  }
+.zoom-controls {
+  display: flex;
+  flex: none;
+}
+
+.control-bar__button {
+  display: grid;
+  place-items: center;
+  width: 2.75rem;
+  min-height: 2.75rem;
+  padding: 0;
+  color: var(--ink-muted);
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  cursor: pointer;
+  transition:
+    color var(--dur-fast) var(--ease-out),
+    background var(--dur-fast) var(--ease-out);
+}
+
+.control-bar__button:active:not(:disabled),
+.credits summary:active {
+  color: var(--brass);
+  background: color-mix(in oklab, var(--land) 72%, transparent);
+}
+
+.control-bar__button:hover:not(:disabled) {
+  color: var(--ink);
+  background: color-mix(in oklab, var(--land) 60%, transparent);
+}
+
+.control-bar__button:disabled {
+  color: var(--ink-faint);
+  cursor: default;
+  opacity: 0.45;
+}
+
+.credits {
+  position: relative;
+  flex: none;
+}
+
+.theme-toggle {
+  flex: none;
+}
+
+.theme-toggle__moon,
+html[data-theme='light'] .theme-toggle__sun {
+  display: none;
+}
+
+html[data-theme='light'] .theme-toggle__moon {
+  display: block;
+}
+
+.credits summary {
+  display: flex;
+  align-items: center;
+  height: 100%;
+  min-height: 2.75rem;
+  padding: 0 var(--sp-3);
+  font: var(--text-label);
+  color: var(--ink-muted);
+  list-style: none;
+  border-radius: 0 var(--radius) var(--radius) 0;
+  cursor: pointer;
+  transition:
+    color var(--dur-fast) var(--ease-out),
+    background var(--dur-fast) var(--ease-out);
+}
+
+.credits summary::-webkit-details-marker {
+  display: none;
+}
+
+.credits summary:hover,
+.credits[open] summary {
+  color: var(--ink);
+  background: color-mix(in oklab, var(--land) 60%, transparent);
+}
+
+.credits summary:focus-visible {
+  outline: 2px solid var(--brass);
+  outline-offset: -2px;
+}
+
+.credits__popover {
+  position: absolute;
+  top: calc(100% + var(--sp-2));
+  right: 0;
+  width: min(22rem, calc(100vw - 3rem));
+  padding: var(--sp-3) var(--sp-4);
+  background: color-mix(in oklab, var(--sea-deep) 98%, transparent);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-panel);
+}
+
+.credits__popover p {
+  margin: 0;
+  font-size: 0.75rem;
+  line-height: 1.55;
+  color: var(--ink-muted);
+  text-wrap: pretty;
+}
+
+.credits__popover span {
+  color: var(--ink);
+}
+
+.credits__popover a {
+  color: var(--ink);
+  text-decoration-color: var(--rule);
+  text-underline-offset: 2px;
+}
+
+.credits__popover a:hover,
+.credits__popover a:focus-visible {
+  color: var(--brass);
+  text-decoration-color: var(--brass);
+}
+
+/* ------------------------------------------------------------- notice --- */
+
+.notice {
+  position: absolute;
+  top: calc(max(var(--sp-5), env(safe-area-inset-top)) + 3.25rem);
+  left: max(var(--sp-5), env(safe-area-inset-left));
+  z-index: var(--z-panel);
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  max-width: min(30rem, calc(100vw - 3rem));
+  padding: var(--sp-2) var(--sp-3);
+  font: var(--text-label);
+  color: var(--ink);
+  background: var(--sea-deep);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-panel);
+}
+
+.notice button {
+  min-height: 2.75rem;
+  padding: 0 var(--sp-3);
+  font: inherit;
+  color: var(--ink);
+  background: var(--land);
+  border: 0;
+  border-radius: calc(var(--radius) - var(--sp-1));
+  cursor: pointer;
+}
+
+.notice button:hover,
+.notice button:focus-visible {
+  color: var(--brass);
 }
 
 /* ---------------------------------------------------------------- hint --- */
 
 .hint {
   position: absolute;
-  bottom: var(--sp-6);
+  bottom: max(var(--sp-6), env(safe-area-inset-bottom));
   left: 50%;
   translate: -50% 0;
   z-index: var(--z-chrome);
@@ -205,13 +395,12 @@ body {
 
 .panel {
   position: absolute;
-  top: var(--sp-5);
+  top: calc(var(--sp-5) + 3.25rem);
   right: var(--sp-5);
   z-index: var(--z-panel);
   width: min(21rem, calc(100vw - 3rem));
   padding: var(--sp-5);
   background: color-mix(in oklab, var(--sea-deep) 92%, transparent);
-  border: 1px solid var(--rule-soft);
   border-radius: var(--radius);
   box-shadow: var(--shadow-panel);
   opacity: 0;
@@ -232,19 +421,22 @@ body {
   right: var(--sp-3);
   display: grid;
   place-items: center;
-  width: 26px;
-  height: 26px;
+  width: 44px;
+  height: 44px;
   padding: 0;
   background: none;
   border: 0;
-  border-radius: 2px;
+  border-radius: calc(var(--radius) - var(--sp-1));
   color: var(--ink-muted);
   cursor: pointer;
-  transition: color var(--dur-fast) var(--ease-out);
+  transition:
+    color var(--dur-fast) var(--ease-out),
+    background var(--dur-fast) var(--ease-out);
 }
 
 .panel__close:hover {
   color: var(--ink);
+  background: color-mix(in oklab, var(--land) 60%, transparent);
 }
 
 .panel__kicker {
@@ -261,13 +453,13 @@ body {
   font-size: 1.5rem;
   letter-spacing: -0.015em;
   text-wrap: balance;
-  padding-right: var(--sp-5);
+  padding-right: calc(var(--sp-6) + var(--sp-4));
+  overflow-wrap: anywhere;
 }
 
-/* Facts as a definition list with hairline rules — no cards. */
+/* Facts rely on alignment and whitespace rather than boxes or dividers. */
 .facts {
   margin: 0;
-  border-top: 1px solid var(--rule-soft);
 }
 
 .facts > div {
@@ -275,7 +467,6 @@ body {
   justify-content: space-between;
   gap: var(--sp-4);
   padding: var(--sp-3) 0;
-  border-bottom: 1px solid var(--rule-soft);
 }
 
 .facts dt {
@@ -287,6 +478,20 @@ body {
   margin: 0;
   font: var(--text-label);
   text-align: right;
+  overflow-wrap: anywhere;
+}
+
+html[data-theme='light'] {
+  --shadow-panel: 0 4px 16px oklch(20% 0.01 250 / 0.16);
+}
+
+@media (pointer: coarse) {
+  .search__result,
+  .control-bar__button,
+  .credits summary,
+  .notice button {
+    min-height: 44px;
+  }
 }
 
 /*
@@ -297,7 +502,7 @@ body {
  * The underline is the whole affordance — inherit the colour, keep the weight,
  * and let a hairline rule in `--rule` say "this one goes somewhere". Brass
  * arrives on hover, which is where this system puts interactive feedback
- * (see the colophon) and keeps saturated colour out of the chrome per the
+ * (see the credits disclosure) and keeps saturated colour out of the chrome per the
  * Color-Is-Data rule.
  */
 .wiki-link {
@@ -362,79 +567,54 @@ body {
   font-size: 0.75rem;
 }
 
-/* ----------------------------------------------------------- colophon --- */
-
-.colophon {
-  position: absolute;
-  bottom: var(--sp-4);
-  left: var(--sp-5);
-  z-index: var(--z-chrome);
-  max-width: 30rem;
-}
-
-.colophon p {
-  margin: 0;
-  font-size: 0.6875rem;
-  line-height: 1.5;
-  color: var(--ink-faint);
-}
-
-.colophon span {
-  color: var(--ink-muted);
-}
-
-.colophon a {
-  color: var(--ink-muted);
-  text-decoration-color: var(--rule);
-  text-underline-offset: 2px;
-}
-
-.colophon a:hover {
-  color: var(--brass);
-}
-
-/* ------------------------------------------------------- map controls --- */
-/* Strip the stock provider chrome; rebuild it in the system's own terms. */
-
-.maplibregl-ctrl-group {
-  background: color-mix(in oklab, var(--sea-deep) 92%, transparent);
-  border: 1px solid var(--rule-soft);
-  border-radius: var(--radius);
-  box-shadow: none;
-}
-
-.maplibregl-ctrl-group button + button {
-  border-top: 1px solid var(--rule-soft);
-}
-
-.maplibregl-ctrl-group button {
-  width: 30px;
-  height: 30px;
-  background: none;
-}
-
-.maplibregl-ctrl-group button .maplibregl-ctrl-icon {
-  filter: invert(1) opacity(0.55);
-}
-
-.maplibregl-ctrl-group button:hover {
-  background: color-mix(in oklab, var(--land) 60%, transparent);
-}
-
-.maplibregl-ctrl-group button:hover .maplibregl-ctrl-icon {
-  filter: invert(1) opacity(0.85);
-}
-
-.maplibregl-ctrl-bottom-right {
-  margin: 0 var(--sp-5) var(--sp-5) 0;
-}
-
 /* ---------------------------------------------------------- responsive --- */
 
 @media (max-width: 40rem) {
-  .masthead {
-    top: var(--sp-4);
-    left: var(--sp-4);
+  .control-bar {
+    top: max(var(--sp-3), env(safe-area-inset-top));
+    left: max(var(--sp-3), env(safe-area-inset-left));
+    width: calc(
+      100vw - max(var(--sp-3), env(safe-area-inset-left)) -
+        max(var(--sp-3), env(safe-area-inset-right))
+    );
+  }
+
+  .wordmark {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    overflow: hidden;
+    clip-path: inset(50%);
+  }
+
+  .zoom-controls {
+    display: none;
+  }
+
+  .search {
+    min-width: 0;
+  }
+
+  .credits__popover {
+    width: calc(
+      100vw - max(var(--sp-3), env(safe-area-inset-left)) -
+        max(var(--sp-3), env(safe-area-inset-right))
+    );
+  }
+
+  .search__input {
+    font-size: 1rem;
+    border-radius: var(--radius) 0 0 var(--radius);
+  }
+
+  .notice {
+    top: calc(max(var(--sp-3), env(safe-area-inset-top)) + 3.25rem);
+    left: max(var(--sp-3), env(safe-area-inset-left));
+    max-width: calc(
+      100vw - max(var(--sp-3), env(safe-area-inset-left)) -
+        max(var(--sp-3), env(safe-area-inset-right))
+    );
   }
 
   .panel {
@@ -445,13 +625,9 @@ body {
     width: 100%;
     max-height: 62vh;
     overflow-y: auto;
+    padding-bottom: max(var(--sp-5), env(safe-area-inset-bottom));
     border-radius: var(--radius) var(--radius) 0 0;
-    border-bottom: 0;
     translate: 0 8px;
-  }
-
-  .colophon {
-    display: none;
   }
 
 }

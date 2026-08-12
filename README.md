@@ -99,8 +99,8 @@ The whole UI is one `innerHTML` template and a few event handlers in
           │
           ▼
  src/map-style.ts  ──────────────►  MapLibre style object
-     builds 12 sources                (29 layers, ordered back to front)
-     and 29 layers                             │
+     builds 12 sources                (30 layers, ordered back to front)
+     and 30 layers                             │
           ▲                                    ▼
           │                            src/main.ts
  src/palette.ts                        constructs the map, wires
@@ -124,7 +124,7 @@ The whole UI is one `innerHTML` template and a few event handlers in
 | `src/icons.ts` | Settlement marks rasterised to SDF images. Preview at `/icons.html`. |
 | `src/main.ts` | Map construction, region/place interaction, the detail panel, search and deep links. |
 | `src/tokens.css` | Type, space and motion tokens. Colour comes from `palette.ts`. |
-| `src/app.css` | Layout for the masthead, panel and colophon. |
+| `src/app.css` | Layout for the map controls, panel and credits disclosure. |
 
 ### Layer order
 
@@ -139,6 +139,7 @@ sea → neighbour-{shelf,land,coast} → land-shelf → island-shelf
     → coast → island-coast → road → wall-glow → wall
     → sea-label → island-label → region-label
     → place-dot → road-label → wall-label → place-label
+    → selected-place-label
 ```
 
 Three of those need explaining. **Inland water sits above the region tints**, so
@@ -171,19 +172,31 @@ coastline.
 Region names then fade back at z7 (`REGION_LABEL_OPACITY`) once the settlements
 are the real subject.
 
+## Day and night themes
+
+The control bar switches between a night atlas and a daylight atlas. First
+visit follows the operating-system preference; an explicit choice is stored in
+`localStorage`. Theme changes rebuild only the MapLibre style, preserving the
+camera and selected place.
+
+Daylight is not an inversion. Water becomes a cool off-white, Westeros remains
+a distinct cool-grey landmass, and regional fills rise from chroma 0.065 to
+0.125. Both palettes retain the same three-tier value ladder and are checked by
+`scripts/check-region-contrast.mjs` on every build.
+
 ## Finding things
 
-**Search** indexes 242 targets — 205 places, 12 regions, 25 islands — and ranks
+**Search** indexes 236 targets — 199 places, 12 regions, 25 islands — and ranks
 them in four tiers: exact, prefix, substring, then subsequence. Focus it with
 `/`, navigate with the arrow keys, `Enter` to go, `Escape` to dismiss.
 
-It covers all 205 places even though the map draws only the confirmed 151.
-Searching a real place and getting nothing reads as a broken search, so the
-distinction lives in the UI instead: results are flagged **Unconfirmed** and
-the panel footnotes the point as inferred from the text. Selecting one reveals
-it on the map —
-the single exception to the confirmed-only rule, scoped to one point at a time
-and only ever by explicit request.
+It includes genuinely named places whose exact position is unknown, because
+"Summerhall" returning nothing reads as broken search. Those results are
+flagged **Location unknown**; selecting one frames its broad region and opens a
+panel without exposing the speculative source coordinate. Six anonymous source
+markers — "Village", two "Holdfast" points, "Unnamed Village", "Tower" and
+"BWB hideout" — are not search targets because their labels identify no unique
+destination. The map itself draws only the confirmed 151 places.
 
 **Deep links** carry the target and never the camera: `?place=kings-landing`,
 `?region=the-north`, `?island=bear-island`. Selecting anything rewrites the URL
@@ -192,8 +205,8 @@ means the same thing to everyone who opens it, which encoding a camera position
 would not.
 
 Slugs delete apostrophes rather than folding them into the separator pass —
-`kings-landing`, not `king-s-landing`. Two upstream places are both called
-"Holdfast", so a clash takes a feature-id suffix (`holdfast-155`).
+`kings-landing`, not `king-s-landing`. Remaining name clashes take a stable
+feature-id suffix.
 
 ## Map data
 
@@ -266,10 +279,11 @@ The slice is Westeros. `WESTEROS_BBOX` extends east to 29.4 to take in the
 Stepstones, which straddle the Narrow Sea; Tyrosh falls inside that span, so
 the Free Cities are excluded by name (`ESSOS_PLACES`) rather than by geometry.
 
-Essos and Sothoryos are drawn as an unlabelled far shore, and are deliberately
-**outside the camera bounds**: Essos is 2.5× the width of Westeros, so framing
-both would shrink the subject to 0.72× and flip the map from tall to square.
-Pan east and they are there.
+Essos and Sothoryos are drawn as a restrained far shore; Essos carries one
+continent-level label while the land remains otherwise unlabelled and
+non-interactive. They are deliberately **outside the camera bounds**: Essos is
+2.5× the width of Westeros, so framing both would shrink the subject to 0.72×
+and flip the map from tall to square. Pan east and they are there.
 
 ## Notes for the next session
 
@@ -295,11 +309,12 @@ the constants in the stops; see `ISLAND_LABEL_OFFSET`.
 are computed once when a tile is built, while feature state changes per frame,
 so MapLibre rejects the whole style. This rules out reacting to selection with
 `text-font`, `symbol-sort-key`, `text-allow-overlap`, `icon-image` or any other
-layout property: a selected label cannot be re-weighted, promoted ahead of its
-neighbours in the collision queue, or exempted from collision. Selection
-highlighting has to be carried by paint properties alone — colour, halo,
-opacity. All three restrictions (`['zoom']`, filters, layout) are the same
-underlying split between per-tile and per-frame evaluation.
+layout property in the base layer. Selection paint still carries colour and
+halo there. The one selected name is also drawn by a separate final layer whose
+filter is changed with `setFilter`; because that layer contains only one
+feature, it can opt out of collision without making all 205 labels overlap.
+All three restrictions (`['zoom']`, filters, layout) are the same underlying
+split between per-tile and per-frame evaluation.
 
 **`setFeatureState` throws if the style is not loaded.** Not a warning — an
 exception, which aborts whatever called it. Clicks never hit this because you
@@ -347,5 +362,9 @@ Code is MIT. The map data in `public/data/` is a derivative of the upstream GIS
 files and stays **CC BY-NC-SA 3.0** — non-commercial, attribution required,
 share-alike. Fonts are SIL OFL 1.1. The world is © George R. R. Martin.
 
-Free to publish and share; not to sell. Keep the on-screen colophon intact — it
-is how the attribution requirement is met. Full terms in `LICENSE`.
+Free to publish and share; not to sell. Keep the on-screen Credits disclosure
+and its colophon intact — it is how the attribution requirement is met. Full
+terms in `LICENSE`.
+
+The static edition does not filter by season or episode; the Credits disclosure
+states that limitation until the timeline and spoiler control land together.

@@ -1,0 +1,22 @@
+{
+  "name": "Westeros — An Interactive Atlas",
+  "short_name": "Westeros",
+  "description": "An interactive atlas of Westeros.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#090e12",
+  "theme_color": "#090e12",
+  "icons": [
+    {
+      "src": "/noun-map-1569832-FFFFFF.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/apple-touch-icon.png",
+      "sizes": "180x180",
+      "type": "image/png"
+    }
+  ]
+}

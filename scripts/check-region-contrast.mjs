@@ -89,6 +89,20 @@ const HOUSE_TOKEN = {
   Wildlings: 'region-wild',
 };
 
+const LABEL_TOKEN = {
+  Stark: 'label-north',
+  Arryn: 'label-vale',
+  Tully: 'label-riverlands',
+  Greyjoy: 'label-iron',
+  Lannister: 'label-west',
+  Targaryen: 'label-crown',
+  Tyrell: 'label-reach',
+  Baratheon: 'label-storm',
+  Martell: 'label-dorne',
+  "Night's Watch": 'label-watch',
+  Wildlings: 'label-wild',
+};
+
 /** The two Gifts share a house but not a border, so they key by name. */
 const NAME_TOKEN = {
   'New Gift': 'region-gift-new',
@@ -111,18 +125,26 @@ function vertexKeys(geom) {
 async function main() {
   // Parsed from source so this cannot drift from the palette it checks.
   const src = await readFile(join(process.cwd(), 'src', 'palette.ts'), 'utf8');
-  const palette = {};
-  for (const m of src.matchAll(/'?([a-z-]+)'?:\s*'(oklch\([^']+\))'/g)) {
-    palette[m[1]] = m[2];
-  }
+  const parsePalette = (name, end) => {
+    const start = src.indexOf(`export const ${name}`);
+    const finish = src.indexOf(end, start);
+    if (start < 0 || finish < 0) throw new Error(`cannot parse ${name}`);
+    const palette = {};
+    for (const m of src.slice(start, finish).matchAll(/'?([a-z-]+)'?:\s*'(oklch\([^']+\))'/g)) {
+      palette[m[1]] = m[2];
+    }
+    return palette;
+  };
+  const dark = parsePalette('darkPalette', '} as const;');
+  const light = { ...dark, ...parsePalette('lightPalette', '\n};') };
 
   const regions = JSON.parse(
     await readFile(join(process.cwd(), 'public', 'data', 'regions.geojson'), 'utf8'),
   ).features;
 
-  const land = oklchToRgb(palette.land);
   const vertices = new Map();
   const tokenOf = new Map();
+  const labelTokenOf = new Map();
 
   for (const f of regions) {
     const name = f.properties?.name;
@@ -130,62 +152,81 @@ async function main() {
     vertices.set(name, vertexKeys(f.geometry));
     const token = NAME_TOKEN[name] ?? HOUSE_TOKEN[f.properties.claimedBy];
     if (token) tokenOf.set(name, token);
-  }
-
-  const lumOf = new Map();
-  for (const [name, token] of tokenOf) {
-    if (!palette[token]) throw new Error(`no such token: ${token}`);
-    lumOf.set(name, luminance(over(oklchToRgb(palette[token]), land, FILL_OPACITY)));
+    const labelToken = LABEL_TOKEN[f.properties.claimedBy];
+    if (labelToken) labelTokenOf.set(name, labelToken);
   }
 
   const names = [...tokenOf.keys()];
   let failed = 0;
 
-  // --- adjacent fills must differ in greyscale ---
-  const pairs = [];
-  for (let i = 0; i < names.length; i++) {
-    for (let j = i + 1; j < names.length; j++) {
-      const [a, b] = [names[i], names[j]];
-      const A = vertices.get(a);
-      const B = vertices.get(b);
-      let shared = 0;
-      for (const k of B) if (A.has(k) && ++shared >= 3) break;
-      if (shared < 3) continue;
-      pairs.push({ a, b, d: Math.abs(lumOf.get(a) - lumOf.get(b)) });
+  for (const [theme, palette] of Object.entries({ dark, light })) {
+    const land = oklchToRgb(palette.land);
+    const lumOf = new Map();
+    for (const [name, token] of tokenOf) {
+      if (!palette[token]) throw new Error(`no such ${theme} token: ${token}`);
+      lumOf.set(name, luminance(over(oklchToRgb(palette[token]), land, FILL_OPACITY)));
     }
-  }
-  pairs.sort((x, y) => x.d - y.d);
 
-  console.log(`region fills — ${pairs.length} adjacent pairs, worst first:\n`);
-  for (const p of pairs) {
-    const ok = p.d >= MIN_ADJACENT;
-    if (!ok) failed++;
+    const pairs = [];
+    for (let i = 0; i < names.length; i++) {
+      for (let j = i + 1; j < names.length; j++) {
+        const [a, b] = [names[i], names[j]];
+        const A = vertices.get(a);
+        const B = vertices.get(b);
+        let shared = 0;
+        for (const k of B) if (A.has(k) && ++shared >= 3) break;
+        if (shared < 3) continue;
+        pairs.push({ a, b, d: Math.abs(lumOf.get(a) - lumOf.get(b)) });
+      }
+    }
+    pairs.sort((x, y) => x.d - y.d);
+
+    console.log(`${theme} region fills — ${pairs.length} adjacent pairs, worst first:\n`);
+    for (const p of pairs) {
+      const ok = p.d >= MIN_ADJACENT;
+      if (!ok) failed++;
+      console.log(
+        `  ${ok ? 'ok  ' : 'FAIL'} ${(p.a + ' / ' + p.b).padEnd(42)}${p.d.toFixed(4)}`,
+      );
+    }
+
+    const inkMuted = luminance(oklchToRgb(palette['ink-muted']));
+    let worstLabel = Infinity;
+    let worstOn = '';
+    for (const [name, l] of lumOf) {
+      const cr = contrast(inkMuted, l);
+      if (cr < worstLabel) {
+        worstLabel = cr;
+        worstOn = name;
+      }
+    }
+    const labelOk = worstLabel >= MIN_LABEL_CONTRAST;
+    if (!labelOk) failed++;
+
     console.log(
-      `  ${ok ? 'ok  ' : 'FAIL'} ${(p.a + ' / ' + p.b).padEnd(42)}${p.d.toFixed(4)}`,
+      `\n  worst adjacent separation: ${pairs[0].d.toFixed(4)} (floor ${MIN_ADJACENT})`,
+    );
+    console.log(
+      `  ${labelOk ? 'ok  ' : 'FAIL'} ink-muted on ${worstOn}: ${worstLabel.toFixed(2)}:1 ` +
+        `(AA ${MIN_LABEL_CONTRAST})`,
+    );
+
+    let worstRegionLabel = Infinity;
+    let worstRegionOn = '';
+    for (const [name, labelToken] of labelTokenOf) {
+      const cr = contrast(luminance(oklchToRgb(palette[labelToken])), lumOf.get(name));
+      if (cr < worstRegionLabel) {
+        worstRegionLabel = cr;
+        worstRegionOn = name;
+      }
+    }
+    const regionLabelOk = worstRegionLabel >= MIN_LABEL_CONTRAST;
+    if (!regionLabelOk) failed++;
+    console.log(
+      `  ${regionLabelOk ? 'ok  ' : 'FAIL'} region label on ${worstRegionOn}: ` +
+        `${worstRegionLabel.toFixed(2)}:1 (AA ${MIN_LABEL_CONTRAST})\n`,
     );
   }
-
-  // --- label ink on those fills must still clear AA ---
-  const inkMuted = luminance(oklchToRgb(palette['ink-muted']));
-  let worstLabel = Infinity;
-  let worstOn = '';
-  for (const [name, l] of lumOf) {
-    const cr = contrast(inkMuted, l);
-    if (cr < worstLabel) {
-      worstLabel = cr;
-      worstOn = name;
-    }
-  }
-  const labelOk = worstLabel >= MIN_LABEL_CONTRAST;
-  if (!labelOk) failed++;
-
-  console.log(
-    `\n  worst adjacent separation: ${pairs[0].d.toFixed(4)} (floor ${MIN_ADJACENT})`,
-  );
-  console.log(
-    `  ${labelOk ? 'ok  ' : 'FAIL'} ink-muted on ${worstOn}: ${worstLabel.toFixed(2)}:1 ` +
-      `(AA ${MIN_LABEL_CONTRAST})`,
-  );
 
   if (failed) {
     console.error(

@@ -1,11 +1,12 @@
-import { Map as MapLibreMap, NavigationControl } from 'maplibre-gl';
+import { Map as MapLibreMap } from 'maplibre-gl';
 import type { MapGeoJSONFeature, MapMouseEvent } from 'maplibre-gl';
 import type { Feature, FeatureCollection, Geometry, Point, Position } from 'geojson';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import './tokens.css';
 import './app.css';
 import { buildStyle } from './map-style';
-import { applyTokens } from './palette';
+import { applyTokens, type Theme } from './palette';
+import { oklchToHex } from './color';
 import { registerIcons } from './icons';
 
 type PlaceProps = {
@@ -76,38 +77,94 @@ const WESTEROS_BOUNDS: [[number, number], [number, number]] = [
   [26.8, 50],
 ];
 
-// Must run before the map is constructed: the style reads these values.
-applyTokens();
+// `theme-init.js` sets this before first paint. Fall back defensively if the
+// storage or media query APIs were unavailable.
+let activeTheme: Theme =
+  document.documentElement.dataset.theme === 'light' ? 'light' : 'dark';
+applyTokens(activeTheme);
 
 const app = document.querySelector<HTMLDivElement>('#app')!;
 app.innerHTML = `
   <div id="map" role="application" aria-label="Map of Westeros"></div>
 
-  <header class="masthead">
-    <h1>The Known World</h1>
-    <p>Westeros</p>
+  <header class="control-bar" aria-label="Map controls">
+    <h1 class="wordmark">Westeros</h1>
+
+    <div class="search" id="search">
+      <label class="search__label" for="search-input">Search the map</label>
+      <svg class="search__icon" viewBox="0 0 16 16" aria-hidden="true" width="16" height="16">
+        <circle cx="7" cy="7" r="3.75" stroke="currentColor" stroke-width="1.25" fill="none"/>
+        <path d="M9.75 9.75 L13 13" stroke="currentColor" stroke-width="1.25" stroke-linecap="round"/>
+      </svg>
+      <input
+        class="search__input"
+        id="search-input"
+        type="search"
+        autocomplete="off"
+        spellcheck="false"
+        maxlength="80"
+        placeholder="search"
+        role="combobox"
+        aria-expanded="false"
+        aria-controls="search-results"
+        aria-autocomplete="list"
+        aria-keyshortcuts="/"
+        aria-busy="true"
+        disabled
+      />
+      <ul class="search__results" id="search-results" role="listbox" hidden></ul>
+      <p class="search__empty" id="search-empty" role="status" hidden>No places found</p>
+    </div>
+
+    <button class="control-bar__button theme-toggle" id="theme-toggle" type="button" disabled>
+      <svg class="theme-toggle__sun" viewBox="0 0 16 16" aria-hidden="true" width="16" height="16">
+        <circle cx="8" cy="8" r="2.5" fill="none" stroke="currentColor" stroke-width="1.25"/>
+        <path d="M8 1.5V3M8 13v1.5M1.5 8H3M13 8h1.5M3.4 3.4l1.1 1.1M11.5 11.5l1.1 1.1M12.6 3.4l-1.1 1.1M4.5 11.5l-1.1 1.1" fill="none" stroke="currentColor" stroke-width="1.1" stroke-linecap="round"/>
+      </svg>
+      <svg class="theme-toggle__moon" viewBox="0 0 16 16" aria-hidden="true" width="16" height="16">
+        <path d="M11.9 10.7A5.2 5.2 0 0 1 5.3 4.1 5.2 5.2 0 1 0 11.9 10.7Z" fill="none" stroke="currentColor" stroke-width="1.25" stroke-linejoin="round"/>
+      </svg>
+    </button>
+
+    <div class="zoom-controls" role="group" aria-label="Zoom controls">
+      <button class="control-bar__button" id="zoom-out" type="button" aria-label="Zoom out">
+        <svg viewBox="0 0 16 16" aria-hidden="true" width="16" height="16">
+          <path d="M3 8 H13" stroke="currentColor" stroke-width="1.4" fill="none"/>
+        </svg>
+      </button>
+      <button class="control-bar__button" id="zoom-in" type="button" aria-label="Zoom in">
+        <svg viewBox="0 0 16 16" aria-hidden="true" width="16" height="16">
+          <path d="M3 8 H13 M8 3 V13" stroke="currentColor" stroke-width="1.4" fill="none"/>
+        </svg>
+      </button>
+    </div>
+
+    <details class="credits" id="credits">
+      <summary aria-label="Map credits">
+        <span class="credits__label">Credits</span>
+      </summary>
+      <div class="credits__popover">
+        <p>
+          Map data adapted from Westeros GIS work by <span>Tear</span>,
+          <span>theMountainGoat</span> and <span>cadaei</span>, via
+          <a href="https://github.com/mapbox/GOT-Inspired-Map" target="_blank" rel="noopener">mapbox/GOT-Inspired-Map</a>.
+          Modified for this atlas. Licensed under
+          <a href="https://creativecommons.org/licenses/by-nc-sa/3.0/" target="_blank" rel="noopener">CC BY-NC-SA 3.0</a>.
+          World © George R. R. Martin. This static edition does not filter the
+          map by season or episode.
+        </p>
+      </div>
+    </details>
   </header>
 
-  <div class="search" id="search">
-    <label class="search__label" for="search-input">Search the map</label>
-    <input
-      class="search__input"
-      id="search-input"
-      type="search"
-      autocomplete="off"
-      spellcheck="false"
-      placeholder="Search Westeros&hellip;"
-      role="combobox"
-      aria-expanded="false"
-      aria-controls="search-results"
-      aria-autocomplete="list"
-    />
-    <ul class="search__results" id="search-results" role="listbox" hidden></ul>
+  <div class="notice" id="load-notice" role="alert" hidden>
+    <span id="load-notice-text">The atlas data could not be loaded.</span>
+    <button id="load-retry" type="button">Retry</button>
   </div>
 
   <div class="hint" id="hint" role="status" aria-live="polite"></div>
 
-  <aside class="panel" id="panel" aria-labelledby="panel-title" hidden>
+  <aside class="panel" id="panel" aria-labelledby="panel-title" aria-live="polite" hidden>
     <button class="panel__close" id="panel-close" aria-label="Close">
       <svg viewBox="0 0 16 16" aria-hidden="true" width="14" height="14">
         <path d="M3 3 L13 13 M13 3 L3 13" stroke="currentColor" stroke-width="1.4" fill="none"/>
@@ -116,19 +173,11 @@ app.innerHTML = `
     <div id="panel-body"></div>
   </aside>
 
-  <footer class="colophon">
-    <p>
-      Map data by <span>cadaei</span>, <span>theMountainGoat</span> and
-      <span>Tear</span> ·
-      <a href="https://creativecommons.org/licenses/by-nc-sa/3.0/" target="_blank" rel="noopener">CC BY-NC-SA 3.0</a>
-      · World © George R. R. Martin
-    </p>
-  </footer>
 `;
 
 const map = new MapLibreMap({
   container: 'map',
-  style: buildStyle(),
+  style: buildStyle(activeTheme),
   // Provisional camera; `fitWesteros()` frames the continent on load, once
   // the container has its real size.
   center: [14, 20],
@@ -149,14 +198,43 @@ if (import.meta.env.DEV) {
   (window as unknown as { map: MapLibreMap }).map = map;
 }
 
-map.on('error', (e) => console.error('[atlas] map error', e.error?.message ?? e));
+map.on('error', () => {
+  loadNoticeText.textContent = 'The map could not be drawn.';
+  loadNotice.hidden = false;
+});
 
 map.touchZoomRotate.disableRotation();
-map.addControl(new NavigationControl({ showCompass: false }), 'bottom-right');
+
+const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
+const zoomOutButton = document.querySelector<HTMLButtonElement>('#zoom-out')!;
+const zoomInButton = document.querySelector<HTMLButtonElement>('#zoom-in')!;
+const zoomDuration = () => (prefersReducedMotion.matches ? 0 : 220);
+
+zoomOutButton.addEventListener('click', () => map.zoomOut({ duration: zoomDuration() }));
+zoomInButton.addEventListener('click', () => map.zoomIn({ duration: zoomDuration() }));
+
+function updateZoomControls() {
+  const zoom = map.getZoom();
+  zoomOutButton.disabled = zoom <= map.getMinZoom();
+  zoomInButton.disabled = zoom >= map.getMaxZoom();
+}
+
+map.on('zoom', updateZoomControls);
+updateZoomControls();
+
+const credits = document.querySelector<HTMLDetailsElement>('#credits')!;
+
+document.addEventListener('pointerdown', (event) => {
+  if (credits.open && !credits.contains(event.target as Node)) credits.open = false;
+});
 
 const panel = document.querySelector<HTMLElement>('#panel')!;
 const panelBody = document.querySelector<HTMLElement>('#panel-body')!;
 const hint = document.querySelector<HTMLElement>('#hint')!;
+const loadNotice = document.querySelector<HTMLElement>('#load-notice')!;
+const loadNoticeText = document.querySelector<HTMLElement>('#load-notice-text')!;
+const loadRetry = document.querySelector<HTMLButtonElement>('#load-retry')!;
+const themeButton = document.querySelector<HTMLButtonElement>('#theme-toggle')!;
 
 const places: Place[] = [];
 const targets: Target[] = [];
@@ -214,9 +292,22 @@ const setRegionState = (
   value: boolean,
 ) => setFeatureState('regions', id, { [key]: value });
 
-/** Selection highlight for a place, read by the dot and label paint. */
-const setPlaceState = (id: number | null, selected: boolean) =>
+/**
+ * Selection highlight for a place.
+ *
+ * Paint state turns the ordinary dot and any already-placed label brass. The
+ * dedicated selected label is filtered to the same id so a searched name can
+ * never be dropped by collision — essential in clusters such as Hull, High
+ * Tide and Spicetown.
+ */
+const setPlaceState = (id: number | null, selected: boolean) => {
   setFeatureState('places', id, { selected });
+  if (!map.isStyleLoaded() || !map.getLayer('selected-place-label')) return;
+  map.setFilter(
+    'selected-place-label',
+    selected && id !== null ? ['==', ['id'], id] : ['==', ['id'], -1],
+  );
+};
 
 /** Selection highlight for an island, read by the island label paint. */
 const setIslandState = (id: number | null, selected: boolean) =>
@@ -258,6 +349,52 @@ function select(
     setIslandState(id, true);
   }
 }
+
+function syncThemeControl() {
+  const next = activeTheme === 'dark' ? 'light' : 'dark';
+  const label = `Use ${next} theme`;
+  themeButton.setAttribute('aria-label', label);
+  themeButton.title = label;
+  document
+    .querySelector<HTMLMetaElement>('meta[name="theme-color"]')
+    ?.setAttribute(
+      'content',
+      oklchToHex(getComputedStyle(document.documentElement).getPropertyValue('--sea').trim()),
+    );
+}
+
+function reapplySelection() {
+  if (selectedRegion !== null) setRegionState(selectedRegion, 'selected', true);
+  if (selectedPlaceId !== null) setPlaceState(selectedPlaceId, true);
+  if (selectedIsland !== null) setIslandState(selectedIsland, true);
+}
+
+function setTheme(theme: Theme) {
+  if (theme === activeTheme) return;
+  activeTheme = theme;
+  applyTokens(theme);
+  syncThemeControl();
+  try {
+    localStorage.setItem('atlas-theme', theme);
+  } catch {
+    // Storage can be unavailable in strict privacy modes; the live choice
+    // still works for this visit.
+  }
+
+  // The source and layer graph is identical, so MapLibre diffs paint values
+  // in place and preserves the camera. Re-assert presentation state once the
+  // style has settled because a full fallback rebuild may drop feature state.
+  map.setStyle(buildStyle(theme));
+  map.once('style.load', () => {
+    void registerIcons(map);
+    reapplySelection();
+  });
+}
+
+syncThemeControl();
+themeButton.addEventListener('click', () => {
+  setTheme(activeTheme === 'dark' ? 'light' : 'dark');
+});
 
 /* --------------------------------------------------------------- search --- */
 
@@ -571,6 +708,8 @@ function wikiLink(name: string, title: string | undefined): string {
   return `<a class="wiki-link" href="${escape(href)}" target="_blank" rel="noopener">${escape(name)}</a>`;
 }
 
+let panelReturnFocus: HTMLElement | null = null;
+
 function openPanel(html: string) {
   panelBody.innerHTML = html;
   panel.hidden = false;
@@ -579,13 +718,15 @@ function openPanel(html: string) {
   panel.classList.add('is-open');
 }
 
-function closePanel() {
+function closePanel(restoreFocus = false) {
   panel.classList.remove('is-open');
   writeUrl(null);
   select(null);
   const done = () => {
     if (!panel.classList.contains('is-open')) panel.hidden = true;
     panel.removeEventListener('transitionend', done);
+    if (restoreFocus && panelReturnFocus?.isConnected) panelReturnFocus.focus();
+    if (restoreFocus) panelReturnFocus = null;
   };
   panel.addEventListener('transitionend', done);
   // Reduced-motion collapses transitions to ~0ms, so guarantee the hide.
@@ -675,14 +816,19 @@ function showRegion(feature: MapGeoJSONFeature) {
 }
 
 function showPlace(place: Place, featureId: number) {
-  select('place', featureId);
+  // An unsited place has no honest point to select. Its panel and URL still
+  // identify it, while the camera supplies only the broad regional context.
+  if (place.props.confirmed) select('place', featureId);
+  else select(null);
   writeUrl(
     targets.find((t) => t.kind === 'place' && t.place.id === featureId) ?? null,
   );
 
   const { name, type, confirmed, added, note } = place.props;
   const holder = place.region ? regionHolder.get(place.region) : undefined;
-  const nearby = nearbyPlaces(place);
+  // Distances derived from a speculative coordinate would turn a caveated
+  // guess straight back into false precision.
+  const nearby = confirmed ? nearbyPlaces(place) : [];
 
   /*
    * Placement used to be a fact row. It was answering a question about the
@@ -699,10 +845,10 @@ function showPlace(place: Place, featureId: number) {
   const caveat = added
     ? (note ?? 'Placed by this atlas; approximate.')
     : !confirmed
-      ? 'Not sited in the source maps. Position is inferred from the text and approximate.'
+      ? 'Exact location unknown. The source map places it only approximately in this region.'
       : '';
 
-  const toCapital = capitalDistance(place);
+  const toCapital = confirmed ? capitalDistance(place) : '';
   // Only caveat distances the panel actually shows. King's Landing itself has
   // no capital row, and would have no Nearby list if it stood alone.
   const showsDistance = Boolean(toCapital) || nearby.length > 0;
@@ -763,15 +909,26 @@ function capitalDistance(place: Place): string {
 /* ----------------------------------------------------------- navigation --- */
 
 /**
- * The zoom a searched settlement lands at.
+ * The reading scale for a searched place.
  *
- * Deep links carry the target only, never the camera (see ROADMAP), so this
- * constant decides what every shared link looks like. 5.6 is chosen because
- * it clears the reveal ladder in `map-style.ts` — at 5.4 the `Other` places
- * are still fading in, so a link to a minor holdfast could arrive before its
- * own dot did. Above 5.8 everything is drawn and the neighbours are context.
+ * A single zoom used to send every result to 5.6. That was enough to reveal a
+ * minor settlement's dot, but not enough to answer the question search had
+ * just been asked: "where, exactly, is this small place?" Larger destinations
+ * need regional context; smaller ones need a closer local view. The ladder
+ * mirrors the label hierarchy while keeping nearby places on screen.
+ *
+ * Deep links carry the target only, never the camera (see ROADMAP), so they
+ * intentionally use this same scale and produce the same useful view.
  */
-const PLACE_ZOOM = 5.6;
+function placeZoom(place: Place): number {
+  if (place.props.type === 'City') return 6;
+  if (place.props.type === 'Town' || place.props.seat) return 6.5;
+  if (place.props.type === 'Castle' || place.props.type === 'Ruin') return 6.8;
+  return 7.1;
+}
+
+/** Islands need enough distance for their coastline to remain context. */
+const ISLAND_ZOOM = 5.8;
 
 /** Bounding box of any geometry, as MapLibre's [[w,s],[e,n]]. */
 function geometryBounds(geom: Geometry): [[number, number], [number, number]] {
@@ -797,6 +954,19 @@ function geometryBounds(geom: Geometry): [[number, number], [number, number]] {
   ];
 }
 
+/** Keep the selected area clear of the side panel or mobile bottom sheet. */
+function detailCameraPadding() {
+  if (window.matchMedia('(max-width: 40rem)').matches) {
+    return {
+      top: 76,
+      bottom: Math.min(240, Math.round(window.innerHeight * 0.36)),
+      left: 20,
+      right: 20,
+    };
+  }
+  return { top: 96, bottom: 72, left: 48, right: 380 };
+}
+
 /**
  * Fly to a target and open its panel. The single path shared by search, deep
  * links and (for regions) nothing else — clicks resolve their own feature
@@ -818,7 +988,7 @@ function goTo(target: Target, animate = true) {
   if (target.kind === 'region') {
     // A region is an area, so frame the whole thing rather than its centre.
     map.fitBounds(geometryBounds(target.feature.geometry), {
-      padding: { top: 96, bottom: 72, left: 48, right: 380 },
+      padding: detailCameraPadding(),
       animate: animate && !motion,
     });
     const feature = map
@@ -835,12 +1005,29 @@ function goTo(target: Target, animate = true) {
   }
 
   if (target.kind === 'island') {
-    fly({ center: target.lngLat, zoom: PLACE_ZOOM });
+    fly({ center: target.lngLat, zoom: ISLAND_ZOOM });
     showIsland(target);
     return;
   }
 
-  fly({ center: target.place.lngLat, zoom: PLACE_ZOOM });
+  if (!target.place.props.confirmed) {
+    const region = targets.find(
+      (candidate): candidate is Extract<Target, { kind: 'region' }> =>
+        candidate.kind === 'region' && candidate.name === target.place.region,
+    );
+    if (region) {
+      map.fitBounds(geometryBounds(region.feature.geometry), {
+        padding: detailCameraPadding(),
+        animate: animate && !motion,
+      });
+    } else {
+      fitWesteros(animate && !motion);
+    }
+    showPlace(target.place, target.place.id);
+    return;
+  }
+
+  fly({ center: target.place.lngLat, zoom: placeZoom(target.place) });
   showPlace(target.place, target.place.id);
 }
 
@@ -981,25 +1168,42 @@ function pointInGeometry(pt: [number, number], geom: Geometry): boolean {
  * has no way to compute.
  */
 async function loadPlaces() {
-  const [placesRes, regionsRes] = await Promise.all([
-    fetch('/data/places.geojson'),
-    fetch('/data/regions.geojson'),
+  const fetchCollection = async (url: string): Promise<FeatureCollection> => {
+    const response = await fetch(url);
+    if (!response.ok) {
+      throw new Error(`${url} returned ${response.status}`);
+    }
+    return response.json() as Promise<FeatureCollection>;
+  };
+
+  const [placeData, regionData, islandData] = await Promise.all([
+    fetchCollection('/data/places.geojson'),
+    fetchCollection('/data/regions.geojson'),
+    fetchCollection('/data/island-labels.geojson'),
   ]);
-  const placeData: FeatureCollection = await placesRes.json();
-  const regionData: FeatureCollection = await regionsRes.json();
+
+  // A retry starts from a clean index. Committing only after all three files
+  // parse means a partial response can never leave duplicate targets behind.
+  places.length = 0;
+  targets.length = 0;
+  regionHolder.clear();
+  regionWiki.clear();
+  regionVertices.clear();
 
   // Recorded per collection by check-wiki-links.mjs. All three files carry the
   // same value; the first one present wins.
   wikiBase = (placeData as { wikiBase?: string }).wikiBase ?? '';
 
   /*
-   * All 205 places are indexed, including the 54 speculative ones.
+   * Named places are indexed, including speculative ones whose broad region
+   * is useful. Anonymous cartographic placeholders are not destinations:
+   * searching for "Village" or either "Holdfast" cannot identify a place.
    *
-   * The *map* still draws only the confirmed 151 (`CONFIRMED_ONLY` in the
-   * style) — but search covers everything, because "Summerhall" returning no
-   * results reads as a broken search rather than as editorial restraint. The
-   * distinction is carried in the UI instead: speculative hits are marked in
-   * the result list, and the panel footnotes the point as inferred.
+   * The *map* still draws only the confirmed 151. Search also covers named
+   * unsited places, because "Summerhall" returning no results reads as a
+   * broken search rather than as editorial restraint. The distinction is
+   * carried in the UI instead: unsited hits are marked in the result list,
+   * frame their broad region, and never expose the guessed point.
    *
    * Panels that count settlements must therefore filter by `confirmed`
    * themselves; the index is no longer pre-filtered for them.
@@ -1033,25 +1237,24 @@ async function loadPlaces() {
     });
   }
 
-  /*
-   * Two upstream places are both called "Holdfast", so a name alone does not
-   * make a unique slug. The first keeps the bare slug and any later clash is
-   * suffixed with the feature id (`holdfast-155`) — stable across runs
-   * because the ids come from the prepared file's own ordering, and readable
-   * enough that a hand-typed `?place=holdfast` still resolves to something
-   * sensible rather than 404ing.
-   */
+  // Protect deep links from future name collisions. The prepared feature id
+  // is stable across runs, so a suffix remains deterministic.
   const usedSlugs = new Set(targets.map((t) => t.slug));
+  const anonymousMarkers = new Set([
+    'Village',
+    'Holdfast',
+    'Unnamed Village',
+    'Tower',
+    'BWB hideout',
+  ]);
   for (const place of places) {
+    if (anonymousMarkers.has(place.props.name)) continue;
     let slug = slugify(place.props.name);
     if (usedSlugs.has(slug)) slug = `${slug}-${place.id}`;
     usedSlugs.add(slug);
     targets.push({ kind: 'place', name: place.props.name, slug, place });
   }
 
-  const islandData: FeatureCollection = await (
-    await fetch('/data/island-labels.geojson')
-  ).json();
   for (const feature of islandData.features) {
     const name = feature.properties?.name as string | undefined;
     if (!name) continue;
@@ -1117,7 +1320,9 @@ function readUrl(): Target | null {
 function fitWesteros(animate = false) {
   map.resize();
   map.fitBounds(WESTEROS_BOUNDS, {
-    padding: { top: 96, bottom: 72, left: 48, right: 48 },
+    padding: window.matchMedia('(max-width: 40rem)').matches
+      ? { top: 76, bottom: 40, left: 20, right: 20 }
+      : { top: 96, bottom: 72, left: 48, right: 48 },
     animate,
   });
 }
@@ -1155,7 +1360,10 @@ map.on('styledata', () => void registerIcons(map));
 map.on('styleimagemissing', () => void registerIcons(map));
 
 map.once('styledata', () => fitWesteros());
-map.on('load', () => fitWesteros());
+map.once('load', () => {
+  fitWesteros();
+  themeButton.disabled = false;
+});
 
 /*
  * Builds the region index the panels read and the target index search uses;
@@ -1167,18 +1375,45 @@ map.on('load', () => fitWesteros());
  * run by then, so an incoming link overrides the default framing rather than
  * racing it.
  */
-loadPlaces().then(() => {
-  const target = readUrl();
-  if (!target) {
-    hint.textContent = 'Select a region or settlement';
-    hint.classList.add('is-visible');
-    setTimeout(() => hint.classList.remove('is-visible'), 4200);
-    return;
+let dataLoading = false;
+
+async function initialiseAtlas() {
+  if (dataLoading) return;
+  dataLoading = true;
+  loadRetry.disabled = true;
+  searchInput.disabled = true;
+  searchInput.setAttribute('aria-busy', 'true');
+  loadNotice.hidden = true;
+
+  try {
+    await loadPlaces();
+    searchInput.disabled = false;
+    searchInput.setAttribute('aria-busy', 'false');
+    const target = readUrl();
+    if (!target) {
+      hint.textContent = 'Select a region or settlement';
+      hint.classList.add('is-visible');
+      setTimeout(() => hint.classList.remove('is-visible'), 4200);
+      return;
+    }
+    // goTo defers itself until the style is loaded, so this is safe to call
+    // immediately regardless of how far along the map is.
+    goTo(target, false);
+  } catch {
+    loadNoticeText.textContent = navigator.onLine
+      ? 'The atlas data could not be loaded.'
+      : 'You appear to be offline.';
+    loadNotice.hidden = false;
+  } finally {
+    dataLoading = false;
+    loadRetry.disabled = false;
   }
-  // goTo defers itself until the style is loaded, so this is safe to call
-  // immediately regardless of how far along the map is.
-  goTo(target, false);
-});
+}
+
+// The map style and search index fetch the same files independently. A full
+// reload retries both; retrying only the index could leave a searchable but
+// still blank map after an offline failure.
+loadRetry.addEventListener('click', () => window.location.reload());
 
 // Keep the framing sensible when the window changes shape.
 let resizeTimer: number;
@@ -1188,7 +1423,7 @@ window.addEventListener('resize', () => {
 });
 
 /** Both place layers are clickable; the dot is the more forgiving target. */
-const PLACE_LAYERS = ['place-dot', 'place-label'];
+const PLACE_LAYERS = ['place-dot', 'place-label', 'selected-place-label'];
 
 for (const layer of PLACE_LAYERS) {
   map.on('mouseenter', layer, () => {
@@ -1226,6 +1461,7 @@ map.on('click', (e: MapMouseEvent) => {
   })[0];
 
   if (placeHit) {
+    panelReturnFocus = map.getCanvas();
     const name = placeHit.properties?.name as string;
     const place = places.find((p) => p.props.name === name);
     if (place) showPlace(place, placeHit.id as number);
@@ -1236,16 +1472,29 @@ map.on('click', (e: MapMouseEvent) => {
     layers: ['region-fill'],
   })[0];
 
-  if (regionHit) showRegion(regionHit);
+  if (regionHit) {
+    panelReturnFocus = map.getCanvas();
+    showRegion(regionHit);
+  }
   else closePanel();
 });
 
-document.querySelector('#panel-close')!.addEventListener('click', closePanel);
+document
+  .querySelector('#panel-close')!
+  .addEventListener('click', () => closePanel(true));
 
 /* --------------------------------------------------------- search UI --- */
 
 const searchInput = document.querySelector<HTMLInputElement>('#search-input')!;
 const searchResults = document.querySelector<HTMLElement>('#search-results')!;
+const searchEmpty = document.querySelector<HTMLElement>('#search-empty')!;
+
+searchInput.addEventListener('focus', () => {
+  credits.open = false;
+  results = search(searchInput.value);
+  active = results.length ? 0 : -1;
+  renderResults();
+});
 
 let results: Target[] = [];
 let active = -1;
@@ -1261,18 +1510,27 @@ function renderResults() {
   if (!results.length) {
     searchResults.hidden = true;
     searchResults.innerHTML = '';
+    const empty =
+      Boolean(searchInput.value.trim()) &&
+      !searchInput.disabled &&
+      document.activeElement === searchInput;
+    searchEmpty.hidden = !empty;
     searchInput.setAttribute('aria-expanded', 'false');
+    if (empty) searchInput.setAttribute('aria-describedby', 'search-empty');
+    else searchInput.removeAttribute('aria-describedby');
     searchInput.removeAttribute('aria-activedescendant');
     return;
   }
 
+  searchEmpty.hidden = true;
+  searchInput.removeAttribute('aria-describedby');
   searchResults.innerHTML = results
     .map((t, i) => {
-      // Speculative places are findable but flagged: the map doesn't draw
-      // them, and the result list shouldn't imply that it does.
+      // Unsited places are findable, but search promises only a broad region,
+      // never the guessed point carried by the source data.
       const speculative =
         t.kind === 'place' && !t.place.props.confirmed
-          ? '<em class="search__flag">Unconfirmed</em>'
+          ? '<em class="search__flag">Location unknown</em>'
           : '';
       const kind = t.kind === 'place' ? t.place.props.type : KIND_LABEL[t.kind];
       return `<li
@@ -1302,6 +1560,7 @@ function closeResults() {
 function commit(index: number) {
   const target = results[index];
   if (!target) return;
+  panelReturnFocus = searchInput;
   searchInput.value = target.name;
   searchInput.blur();
   closeResults();
@@ -1332,13 +1591,17 @@ searchInput.addEventListener('keydown', (e) => {
     // First Escape dismisses the list; a second clears the field. Escape
     // should never be a dead key while the field has focus.
     if (results.length) closeResults();
-    else searchInput.value = '';
+    else {
+      searchInput.value = '';
+      renderResults();
+    }
     e.stopPropagation();
   }
 });
 
-searchResults.addEventListener('mousedown', (e) => {
-  // mousedown, not click: blur would tear the list down before click fires.
+searchResults.addEventListener('pointerdown', (e) => {
+  // pointerdown, not click: blur would tear the list down before click fires,
+  // and pointer events cover touch, pen and mouse through the same path.
   const li = (e.target as HTMLElement).closest('.search__result');
   if (!li) return;
   e.preventDefault();
@@ -1351,7 +1614,8 @@ searchInput.addEventListener('blur', () => {
 });
 
 document.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape' && !panel.hidden) closePanel();
+  if (e.key === 'Escape' && !panel.hidden) closePanel(true);
+  if (e.key === 'Escape' && credits.open) credits.open = false;
   // "/" is the conventional focus-search key and costs no visible chrome.
   if (e.key === '/' && document.activeElement !== searchInput) {
     e.preventDefault();
@@ -1359,3 +1623,5 @@ document.addEventListener('keydown', (e) => {
     searchInput.select();
   }
 });
+
+void initialiseAtlas();

@@ -19,6 +19,8 @@ const source = readFileSync(new URL('../src/map-style.ts', import.meta.url), 'ut
 // structural validation, so any valid colour will do.
 const stripped = source
   .replace(/^import[^\n]*\n/gm, '')
+  .replace(/let activePalette:[^;]+;/, 'let activePalette = {};')
+  .replace(/\s*activePalette = palettes\[theme\];/, '')
   .replace(/const token = [^;]+;/, "const token = () => '#888888';");
 
 // Node 24 strips TypeScript natively, so the module can be imported as-is

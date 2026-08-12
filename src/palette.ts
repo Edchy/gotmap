@@ -10,7 +10,7 @@
  * See DESIGN.md for the rules these encode.
  */
 
-export const palette = {
+export const darkPalette = {
   /* Neutrals: the near-monochrome interface ground. */
   sea: 'oklch(16% 0.012 250)',
   'sea-deep': 'oklch(12% 0.014 250)',
@@ -149,15 +149,82 @@ export const palette = {
   'label-wild': 'oklch(86% 0.010 250)',
 } as const;
 
-export type TokenName = keyof typeof palette;
+export type TokenName = keyof typeof darkPalette;
+export type Palette = Record<TokenName, string>;
+export type Theme = 'dark' | 'light';
+
+/**
+ * Daylight atlas palette.
+ *
+ * The water is a cool off-white rather than paper or parchment. Westeros is
+ * one clear value step darker, while political fills carry more chroma than
+ * the night palette: daylight can support vivid ink without making the map
+ * glare. Region lightness still follows three tiers so every shared border
+ * survives desaturation.
+ */
+export const lightPalette: Palette = {
+  ...darkPalette,
+  sea: 'oklch(97% 0.006 235)',
+  'sea-deep': 'oklch(99% 0.004 235)',
+  land: 'oklch(88% 0.012 235)',
+  'land-high': 'oklch(83% 0.014 235)',
+  'land-far': 'oklch(93% 0.008 235)',
+  water: 'oklch(97% 0.010 230)',
+  rule: 'oklch(55% 0.014 235)',
+  'rule-soft': 'oklch(76% 0.012 235)',
+  road: 'oklch(48% 0.040 70)',
+  wall: 'oklch(48% 0.065 220)',
+  ink: 'oklch(20% 0.014 250)',
+  'ink-muted': 'oklch(35% 0.014 250)',
+  'ink-faint': 'oklch(53% 0.012 250)',
+  'ink-sea': 'oklch(43% 0.018 245)',
+  brass: 'oklch(43% 0.105 70)',
+  'brass-dim': 'oklch(47% 0.085 70)',
+
+  /* tier 1 — darkest daylight fills */
+  'region-riverlands': 'oklch(58% 0.125 200)',
+  'region-iron': 'oklch(58% 0.125 165)',
+  'region-storm': 'oklch(58% 0.125 340)',
+  'region-gift-new': 'oklch(58% 0.030 235)',
+  'region-wild': 'oklch(58% 0.026 235)',
+  /* tier 2 */
+  'region-north': 'oklch(68% 0.125 245)',
+  'region-vale': 'oklch(68% 0.125 295)',
+  'region-reach': 'oklch(68% 0.125 135)',
+  'region-gift-bran': 'oklch(68% 0.030 235)',
+  /* tier 3 — lightest daylight fills */
+  'region-west': 'oklch(78% 0.125 95)',
+  'region-crown': 'oklch(78% 0.125 25)',
+  'region-dorne': 'oklch(78% 0.125 60)',
+
+  /* Dark label inks preserve each territory hue over the light ground. */
+  'label-north': 'oklch(30% 0.095 245)',
+  'label-vale': 'oklch(30% 0.095 295)',
+  'label-riverlands': 'oklch(30% 0.095 200)',
+  'label-iron': 'oklch(30% 0.095 165)',
+  'label-west': 'oklch(30% 0.095 95)',
+  'label-crown': 'oklch(30% 0.095 25)',
+  'label-reach': 'oklch(30% 0.095 135)',
+  'label-storm': 'oklch(30% 0.095 340)',
+  'label-dorne': 'oklch(30% 0.095 60)',
+  'label-watch': 'oklch(30% 0.020 235)',
+  'label-wild': 'oklch(30% 0.020 235)',
+};
+
+export const palettes: Record<Theme, Palette> = {
+  dark: darkPalette,
+  light: lightPalette,
+};
 
 /**
  * Project the palette into CSS custom properties on :root, so stylesheets can
  * use `var(--sea)` while TypeScript keeps the authoritative values.
  */
-export function applyTokens() {
+export function applyTokens(theme: Theme) {
   const root = document.documentElement;
-  for (const [name, value] of Object.entries(palette)) {
+  root.dataset.theme = theme;
+  root.style.colorScheme = theme;
+  for (const [name, value] of Object.entries(palettes[theme])) {
     root.style.setProperty(`--${name}`, value);
   }
 }

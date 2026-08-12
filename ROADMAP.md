@@ -17,9 +17,10 @@ Most of this is already sitting in the upstream dataset, unused. These are
 "wire up a layer we have", not "author from scratch".
 
 - [x] **Essos and Sothoryos** — the far shore, as bare land: dimmer fill
-      (`land-far`, between sea and land), soft coastline, no labels, no
-      region tint, not interactive. The Narrow Sea now has two sides and the
-      Stepstones read as a chain *between* continents.
+      (`land-far`, between sea and land), soft coastline, no region tint, and
+      not interactive. Essos has one continent-level orientation label; there
+      are no settlement or political labels. The Narrow Sea now has two sides
+      and the Stepstones read as a chain *between* continents.
 
       Deliberately **not** added to `WESTEROS_BBOX` or the camera bounds.
       Essos is 2.5x the width of Westeros, so fitting both would shrink the
@@ -186,21 +187,25 @@ labelled from outside.
 
 ## 2. Finding things
 
-- [x] **Search** — 242 targets: 205 places, 12 regions, 25 islands. Ranked in
+- [x] **Day / night theme** — one compact control in the unified map bar.
+      First visit follows `prefers-color-scheme`; a manual choice persists.
+      Daylight uses cool off-white water rather than parchment, a separate
+      cool-grey land value, and more vivid region chroma. Switching rebuilds
+      the MapLibre paint style without moving the camera, then restores the
+      selected feature. The build now checks adjacency and label contrast in
+      both palettes.
+
+- [x] **Search** — 236 targets: 199 places, 12 regions, 25 islands. Ranked in
       four tiers (exact, prefix, substring, subsequence) so "the north" cannot
       lose to a castle whose letters happen to interleave.
 
-      **Search covers all 205 places; the map still draws only the confirmed
-      151.** "Summerhall returns nothing" reads as a broken search, not as
-      editorial restraint, so the distinction moved into the UI — results are
-      flagged `Unconfirmed` and the panel footnotes the point as inferred. A
-      selected speculative place is *revealed* on the map, which needed the
-      narrowest possible escape hatch in the style: not a `filter` (MapLibre
-      rejects `feature-state` there outright) and not a wrapper around
-      `REVEAL_AT_ZOOM` (that buries `['zoom']` inside a `*`, the other
-      documented restriction). The gate lives inside each stop of the reveal
-      ladder instead, which also keeps a revealed place from appearing earlier
-      than its type otherwise would.
+      **Search includes named places whose exact location is unknown; the map
+      still draws only the confirmed 151.** "Summerhall returns nothing" reads
+      as broken search, but revealing a guessed point reads as false precision.
+      These results are flagged `Location unknown`, frame only their broad
+      region and open a caveated panel with no derived distances. Six anonymous
+      source markers (including "Village" and both "Holdfast" points) are
+      excluded because they do not identify unique destinations.
 
       **Word-boundary scoring is what makes acronyms work.** A plain
       subsequence span ranked King's Landing *sixth* for "kl", behind Karhold,
@@ -213,10 +218,9 @@ labelled from outside.
       **The URL carries the target, never the camera.** A shared link means
       the same thing to everyone who opens it; encoding the camera would churn
       the URL on every pan, write a history entry per gesture, and freeze one
-      person's window size into someone else's screen. Places land at a fixed
-      z5.6 (above the `Other` reveal at 5.4, so a link to a minor holdfast
-      cannot arrive before its own dot); regions fit their bounds instead,
-      because a region is an area.
+      person's window size into someone else's screen. Places use a reading
+      scale matched to their hierarchy — z6 for cities through z7.1 for minor
+      places — while regions fit their bounds because a region is an area.
 
       **The searched name is highlighted on the map**, not just in the panel:
       brass text plus a halo widened 1.2 → 2.4, which lets the name sit in its
@@ -225,14 +229,14 @@ labelled from outside.
       Measured, brass is 71–128 RGB from the neighbouring label colours and
       holds 8.4–9.7:1 on both sea and land.
 
-      **The highlight cannot use weight or collision priority.** Setting the
-      selected label in SemiBold, sorting it to the front of the collision
-      queue, and exempting it from collision were all tried and all rejected:
-      `text-font`, `symbol-sort-key` and `text-allow-overlap` are *layout*
-      properties, and feature state cannot reach those (see README). So a
-      selected label still competes on equal terms with its neighbours and can
-      in principle be dropped — survivable only because the panel names the
-      place in text regardless.
+      **The selected name cannot lose a collision or render twice.** Feature state still cannot
+      reach `text-font`, `symbol-sort-key` or `text-allow-overlap` in the base
+      layer. Instead, a final `selected-place-label` layer is dynamically
+      filtered to the selected feature and opts that one label out of collision.
+      The base layer simultaneously fades that feature to zero, so its variable
+      anchor cannot produce a second copy. `text-ignore-placement` keeps the
+      overlay from displacing surrounding names. This is what makes tight
+      clusters such as Hull / High Tide / Spicetown work.
 
       **One `select()` owns all three selection kinds.** Each panel used to
       clear the others by hand, which is how a stale highlight survives: miss
@@ -242,10 +246,8 @@ labelled from outside.
 
       **Apostrophes must be deleted, not treated as separators.** Westeros is
       full of them, and the obvious slugify yields `king-s-landing` — unique
-      and correct and something nobody would ever type. Two places are also
-      both called "Holdfast", so slugs are de-duplicated with a feature-id
-      suffix. Verified: all 242 targets round-trip name → slug → target, and
-      each surfaces itself as its own top search hit.
+      and correct and something nobody would ever type. Remaining clashes are
+      de-duplicated with a feature-id suffix.
 - [ ] **Filters** — show only cities, only castles, castles + rivers, and so
       on. Cheap to implement (the layers are already type-driven) and it is
       the fastest way to cut density when the map gets busy.
@@ -601,8 +603,9 @@ considerably.
       MapLibre style fails silently, and this catches it in a second.
 - [x] **Seas and bays** — 15 water labels, anchored by pole of
       inaccessibility so a name never strays onto land.
-- [x] **Essos and Sothoryos** — unlabelled far shore, drawn a step back.
-      Panned to, never framed: the opening view stays on Westeros.
+- [x] **Essos and Sothoryos** — far shore drawn a step back, with one Essos
+      orientation label. Panned to, never framed: the opening view stays on
+      Westeros.
 - [x] **Rivers and lakes** — 46 rivers, 11 lakes, painted at the sea's own
       value so water is one colour everywhere. The Isle of Faces sits inside
       God's Eye, tinted with the Riverlands like the shore around it.

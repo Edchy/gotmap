@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="1200" viewBox="0 0 1200 1200">
+  <!-- Centred in a square so macOS Quick Look can render an exact 1200px
+       source; the production PNG is then cropped to this 1200x630 frame. -->
+  <g transform="translate(0 285)">
+  <rect width="1200" height="630" fill="#0d1118"/>
+  <path d="M720 0 596 103l-55 92-88 96-19 103-87 100-42 136H0V0Z" fill="#171f2a"/>
+  <path d="M461 0 354 91l-25 76-76 60-31 95-96 82-31 113" fill="none" stroke="#56606c" stroke-width="2" opacity=".72"/>
+  <path d="M598 0 513 79l-44 88-72 55-22 93-76 68-37 117" fill="none" stroke="#334e64" stroke-width="42" opacity=".55"/>
+  <path d="M468 167 397 222l-22 93-76 68" fill="none" stroke="#5a3c57" stroke-width="40" opacity=".74"/>
+  <path d="M299 383 262 500 213 630" fill="none" stroke="#665531" stroke-width="40" opacity=".72"/>
+  <path d="M167 135 270 135M218 84v102" stroke="#d0ae59" stroke-width="5" stroke-linecap="square" opacity=".8"/>
+  <path d="M107 79 151 191 198 79 245 191 289 79" fill="none" stroke="#d0ae59" stroke-width="18" stroke-linejoin="miter"/>
+  <text x="690" y="270" fill="#eef0f3" font-family="Inter, Arial, sans-serif" font-size="68" font-weight="600" letter-spacing="-1">Westeros</text>
+  <text x="694" y="328" fill="#a6adb6" font-family="Inter, Arial, sans-serif" font-size="27" font-weight="500" letter-spacing="4">AN INTERACTIVE ATLAS</text>
+  <line x1="694" y1="372" x2="1060" y2="372" stroke="#4b525c" stroke-width="1"/>
+  <text x="694" y="420" fill="#a6adb6" font-family="Inter, Arial, sans-serif" font-size="24">Regions, houses and settlements</text>
+  </g>
+</svg>

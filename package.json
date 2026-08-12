@@ -2,6 +2,9 @@
   "name": "known-world-atlas",
   "version": "0.1.0",
   "description": "An interactive atlas of Westeros.",
+  "engines": {
+    "node": "22.x"
+  },
   "scripts": {
     "dev": "vite",
     "build": "node scripts/validate-style.mjs && node scripts/check-region-contrast.mjs && tsc --noEmit && vite build",

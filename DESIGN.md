@@ -1,7 +1,7 @@
 <!-- SEED: re-run /impeccable document once there's code to capture the actual tokens and components. -->
 ---
 name: Known World Atlas
-description: A quiet, editorial dark-ground atlas of the world of Ice and Fire.
+description: A quiet editorial day-and-night atlas of the world of Ice and Fire.
 ---
 
 # Design System: Known World Atlas
@@ -17,15 +17,25 @@ This system is deliberately *not* tech-product minimalism. The nearest trap for 
 The map is the product, so the interface is mostly absent. At rest the screen is the world and almost nothing else. Density arrives on demand — by zoom, selection, or search — and retreats when the question is answered. Chrome is guilty until proven necessary.
 
 **Key Characteristics:**
-- Dark ground, chosen for the night-viewing context, never as a mood effect
+- A night-first dark ground plus a deliberate daylight atlas, never a colour inversion
 - Editorial type discipline: one family, many weights, a strict scale
-- Hairline rules and value separation instead of borders, cards, and shadows
+- Borderless chrome separated by value, space, and compact ambient shadow
 - Color lives in the data; the interface stays near-monochrome
 - Motion serves orientation, not delight
 
 ## 2. Colors
 
-A near-monochrome interface wrapped around a four-role data palette: cold dark neutrals carry every surface, while saturated color is reserved exclusively for information on the map.
+A near-monochrome interface wrapped around a four-role data palette: cold neutrals carry every surface, while saturated color is reserved exclusively for information on the map.
+
+### Daylight counterpart
+
+Light mode is **The Day Desk**, not parchment and not inverted night colours.
+Water is a cool off-white at L97; Westeros is cool grey at L88, with the far
+shore between them. Regional chroma rises from 0.065 to 0.125 because daylight
+can carry clearer colour without glow. The political layer keeps the same
+three-tier adjacency logic, reversed to 58% / 68% / 78%, and region labels use
+dark versions of their territory hues. The single brass accent darkens enough
+to remain legible on the pale chrome.
 
 ### Primary
 - **Brass** `[to be resolved during implementation — warm, low-chroma metallic]`: The single interface accent. Carries selection, focus rings, the active state, and the found result. Chosen over ice blue (too close to the sci-fi HUD lane) and ember (too much heat for the brief). It must read as instrument brass, not fantasy gold: keep chroma low enough that it never glows against the sea.
@@ -107,19 +117,19 @@ All neutrals are tinted a few thousandths of chroma toward the sea's own cold hu
 
 **The Halo Rule.** Every map label sits on varied terrain, so every map label carries a casing or halo in the ground color beneath it. A label that relies on the terrain happening to be dark enough is a bug.
 
-**The Matching Label Rule.** A label that names a colored area is set in that area's own hue, lightened until it clears contrast against its own fill — region names carry the house hue at L 86% and chroma 0.055, holding 7.7–8.3:1 on the fill and 10.8:1+ where a name strays onto bare land or sea. This is the one place color leaves the fills, and it does not break The Color-Is-Data Rule: the hue is still carrying data, and it is carrying the *same* datum as the fill beneath it. The map needs no color key because every territory states its own color. It applies only where a label names a colored region; settlement and water labels stay in the neutral ink ramp. Lightening is the only permitted direction — the fills are dark, so a darker label would sink into its own territory.
+**The Matching Label Rule.** A label that names a colored area is set in that area's own hue and moved away from its fill in value — lighter at night, darker by day. Night region names carry the house hue at L86/chroma 0.055; daylight uses L30/chroma 0.095. This is the one place color leaves the fills, and it does not break The Color-Is-Data Rule: the hue is still carrying the same datum as the fill beneath it. The map needs no color key because every territory states its own color. Settlement and water labels stay in the neutral ink ramp.
 
 ## 4. Elevation
 
-Flat, with tonal layering. Motion energy is *responsive*, not choreographed, and the print reference rules out drop shadows almost entirely: editorial layouts separate content with value, rule, and whitespace, not with floating cards.
+Flat, with tonal layering. Motion energy is *responsive*, not choreographed. Editorial layouts separate content with value and whitespace, not outlined containers or floating card stacks.
 
-Depth comes from three devices only: a one-step value shift between surfaces, a hairline rule, and generous space. Panels that sit over the map may use a single soft ambient shadow and a background scrim to establish that the map continues beneath — this is the one sanctioned exception, and it exists for legibility over arbitrary terrain, not for decoration.
+Depth comes from a one-step value shift, generous space, and a compact ambient shadow where chrome sits directly over the map. Resting UI components have no borders. A shared 12px radius softens the control bar, menus, notices, and panels without turning every control into a pill.
 
 ### Named Rules
 
-**The No-Card Rule.** Content is not boxed by default. If something needs separation, try space first, then a hairline, then a value shift. A bordered rounded rectangle with a shadow is the last resort, and nested cards are always wrong.
+**The No-Card Rule.** Content is not boxed by default. If something needs separation, try space first, then a value shift. Resting borders are absent from interface chrome, and nested cards are always wrong.
 
-**The 2014 Test.** If a surface looks like a 2014 app, the shadow is too dark and the blur is too small. Ambient shadows over the map are wide, soft, and nearly invisible — they suggest a plane, they don't draw one.
+**The 2014 Test.** If a surface looks like a 2014 app, the shadow is too dark or too layered. Ambient shadows over the map are compact and quiet — just enough to keep borderless chrome legible over arbitrary terrain.
 
 ## 5. Components
 

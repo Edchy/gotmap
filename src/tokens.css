@@ -29,7 +29,7 @@
   --sp-5: 1.5rem;
   --sp-6: 2rem;
 
-  --radius: 3px; /* editorial, not pill; nearly square */
+  --radius: 12px; /* soft instrument corners, still well short of a pill */
 
   /* ---- Motion ---- */
   /* Responsive, not choreographed. Ease-out only; no bounce, no elastic. */
@@ -39,8 +39,8 @@
   --dur-slow: 420ms;
 
   /* ---- Elevation ---- */
-  /* The 2014 Test: wide, soft, nearly invisible. Suggests a plane, doesn't draw one. */
-  --shadow-panel: 0 1px 2px oklch(0% 0 0 / 0.3), 0 12px 40px oklch(0% 0 0 / 0.45);
+  /* Borderless chrome needs one compact ambient lift from the map beneath. */
+  --shadow-panel: 0 4px 16px oklch(0% 0 0 / 0.34);
 
   /* ---- Z scale ---- */
   --z-map: 1;

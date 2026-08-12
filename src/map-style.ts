@@ -1,9 +1,9 @@
 import type { StyleSpecification, ExpressionSpecification } from 'maplibre-gl';
 import { oklchToHex } from './color';
-import { palette, type TokenName } from './palette';
+import { darkPalette, palettes, type Palette, type Theme, type TokenName } from './palette';
 
 /**
- * The Night Desk basemap.
+ * The day-and-night atlas basemap.
  *
  * Land is separated from sea by value (1.15:1) rather than a heavy stroke, so
  * the coastline hairline carries the figure/ground read. Region colour lives
@@ -15,11 +15,13 @@ import { palette, type TokenName } from './palette';
  * CSS Color 4 and needs hex. Values come from the palette module rather than
  * computed styles so they are available at module-evaluation time.
  */
-const token = (name: TokenName) => oklchToHex(palette[name]);
+let activePalette: Palette = darkPalette;
+const token = (name: TokenName) => oklchToHex(activePalette[name]);
 
 /**
  * Region fills keyed by the house that claims them.
- * Built lazily: tokens must be resolved after the stylesheet has applied.
+ * Built lazily so `buildStyle(theme)` can select the active palette before
+ * any colour expressions are resolved.
  */
 const regionTint = (): ExpressionSpecification => [
   'case',
@@ -108,7 +110,7 @@ const LABEL_FONT: ExpressionSpecification = [
   ],
 ];
 
-const LABEL_COLOR: ExpressionSpecification = [
+const labelColor = (): ExpressionSpecification => [
   'case',
   ['boolean', ['feature-state', 'selected'], false], token('brass'),
   // A ruling seat is set in full ink like a city, not the muted grey the other
@@ -127,12 +129,12 @@ const LABEL_COLOR: ExpressionSpecification = [
 /**
  * Lower sorts first, and first placed wins a collision.
  *
- * Promoting the *selected* label to the front of the queue was tried and is
- * not possible: `symbol-sort-key` is a layout property, and feature state
- * cannot reach those (see LABEL_FONT). Collision priority is therefore fixed
- * at tile-build time and a selected label competes on equal terms with its
- * neighbours — which is survivable because the panel names the place in text
- * regardless of whether its map label wins.
+ * Feature state cannot promote the *selected* label in this base layer:
+ * `symbol-sort-key` is a layout property, and feature state cannot reach those
+ * (see LABEL_FONT). Collision priority here is therefore fixed at tile-build
+ * time. A dedicated `selected-place-label` layer at the end of the style
+ * handles the one explicit selection without weakening collision detection
+ * for the other 204 names.
  */
 const LABEL_SORT: ExpressionSpecification = ['-', 5, ['get', 'rank']];
 
@@ -147,33 +149,18 @@ const LABEL_SORT: ExpressionSpecification = ['-', 5, ['get', 'rank']];
  */
 /**
  * Speculative placements stay hidden; the map shouldn't present guesses.
+ * Search can still find a genuinely named but unsited place, but it frames
+ * only the broad region and opens an explicit "Exact location unknown" panel.
+ * The guessed source coordinate never becomes a dot or label.
  *
- * The one exception is a place the reader has deliberately asked for by name.
- * Search covers all 205 places, so a hit on a speculative one has to be
- * visible when the camera arrives — flying to an empty patch of land would
- * read as a broken search. Selection is the narrowest possible escape hatch:
- * it admits exactly one point at a time, only ever by explicit request, and
- * the panel simultaneously footnotes it as inferred. The map still
- * never volunteers a guess on its own.
- *
- * This wraps each *stop* of the reveal ladder below, which is the only place
- * it can go. It cannot be a `filter`: MapLibre rejects `feature-state` there
- * outright ("feature-state data expressions are not supported with filters"),
- * since filters are evaluated per tile while feature-state changes per frame.
- * And it cannot wrap `REVEAL_AT_ZOOM` from outside, because multiplying the
- * two buries `['zoom']` inside a `*` — the other documented restriction (see
- * README). `step` stays the outer expression; the per-feature test rides in
- * its stop values, as ISLAND_LABEL_OFFSET does.
- *
- * Living in the stops also preserves the reveal order: a selected speculative
- * place appears, but never earlier than its type would have shown it anyway.
+ * This still wraps each *stop* of the reveal ladder below because MapLibre
+ * requires `['zoom']` to remain the direct input to the top-level `step`.
  */
 const visible = (
   typeTest: ExpressionSpecification | number,
 ): ExpressionSpecification => [
   'case',
   ['get', 'confirmed'], typeTest,
-  ['boolean', ['feature-state', 'selected'], false], typeTest,
   0,
 ];
 
@@ -203,6 +190,32 @@ const REVEAL_AT_ZOOM: ExpressionSpecification = [
   4.9, visible(['match', ['get', 'type'], 'City', 1, 'Town', 1, 'Castle', 1, 0]),
   5.4, visible(['match', ['get', 'type'], 'Other', 0, 1]),
   5.8, visible(1),
+];
+
+/**
+ * The selected name is drawn by `selected-place-label`, so suppress its copy
+ * in the collision-managed base layer. Keeping this as a separate top-level
+ * `step` preserves MapLibre's requirement that `['zoom']` be the direct input
+ * while guaranteeing one rendered copy of the selected name, not two labels
+ * choosing different variable anchors.
+ */
+const unselected = (
+  typeTest: ExpressionSpecification | number,
+): ExpressionSpecification => [
+  'case',
+  ['boolean', ['feature-state', 'selected'], false], 0,
+  visible(typeTest),
+];
+
+const BASE_LABEL_OPACITY: ExpressionSpecification = [
+  'step',
+  ['zoom'],
+  0,
+  3.9, unselected(['match', ['get', 'type'], 'City', 1, 0]),
+  4.4, unselected(['case', ['get', 'seat'], 1, ['match', ['get', 'type'], 'City', 1, 'Town', 1, 0]]),
+  4.9, unselected(['match', ['get', 'type'], 'City', 1, 'Town', 1, 'Castle', 1, 0]),
+  5.4, unselected(['match', ['get', 'type'], 'Other', 0, 1]),
+  5.8, unselected(1),
 ];
 
 const ISLAND_LABEL_SIZE: ExpressionSpecification = [
@@ -369,7 +382,8 @@ const ISLAND_LABEL_OFFSET: ExpressionSpecification = [
   8, islandOffsetAt(15.83),
 ];
 
-export function buildStyle(): StyleSpecification {
+export function buildStyle(theme: Theme = 'dark'): StyleSpecification {
+  activePalette = palettes[theme];
   return {
     version: 8,
     // SDF glyphs generated from Inter by scripts/build-glyphs.mjs. Served as
@@ -377,8 +391,24 @@ export function buildStyle(): StyleSpecification {
     glyphs: '/glyphs/{fontstack}/{range}.pbf',
     sources: {
       westeros: { type: 'geojson', data: '/data/westeros.geojson' },
-      // Essos and Sothoryos: land, and nothing else. Context for the coast.
+      // Essos and Sothoryos: bare land that gives the Narrow Sea a far shore.
       neighbours: { type: 'geojson', data: '/data/neighbours.geojson' },
+      // The western half of Essos is the part this Westeros-first frame can
+      // reveal. A hand-placed anchor keeps the continent name in that visible
+      // mass instead of at the full polygon's far-eastern centroid.
+      neighbourLabels: {
+        type: 'geojson',
+        data: {
+          type: 'FeatureCollection',
+          features: [
+            {
+              type: 'Feature',
+              properties: { name: 'Essos' },
+              geometry: { type: 'Point', coordinates: [43.25, 0.25] },
+            },
+          ],
+        },
+      },
       regions: { type: 'geojson', data: '/data/regions.geojson' },
       places: { type: 'geojson', data: '/data/places.geojson' },
       islands: { type: 'geojson', data: '/data/islands.geojson' },
@@ -399,12 +429,13 @@ export function buildStyle(): StyleSpecification {
       { id: 'sea', type: 'background', paint: { 'background-color': token('sea') } },
 
       /**
-       * Essos and Sothoryos. Land and a coastline, nothing more.
+       * Essos and Sothoryos. Land and a coastline, with only the continent
+       * name needed to orient the reader.
        *
        * Drawn first and dimmer than Westeros (`land-far` sits between sea and
        * land) so the far shore reads as somewhere else — present enough that
        * the Narrow Sea has two sides, quiet enough that it never competes
-       * with the subject. No fill interaction, no labels, no region tint:
+       * with the subject. No fill interaction, settlements, or region tint:
        * The Color-Is-Data Rule cuts both ways, and there is no data here yet.
        */
       {
@@ -432,6 +463,37 @@ export function buildStyle(): StyleSpecification {
           'line-color': token('rule-soft'),
           'line-width': ['interpolate', ['linear'], ['zoom'], 2, 0.4, 6, 0.8],
           'line-opacity': 0.8,
+        },
+      },
+      {
+        id: 'neighbour-label',
+        type: 'symbol',
+        source: 'neighbourLabels',
+        layout: {
+          'text-field': ['get', 'name'],
+          'text-font': ['literal', ['Inter Medium']],
+          'text-size': [
+            'interpolate', ['linear'], ['zoom'],
+            2, 16,
+            5, 22,
+            7, 26,
+          ],
+          'text-letter-spacing': 0.32,
+          'text-transform': 'uppercase',
+          'text-padding': 4,
+        },
+        paint: {
+          'text-color': token('ink-muted'),
+          'text-halo-color': token('land-far'),
+          'text-halo-width': 1.8,
+          'text-halo-blur': 0.8,
+          'text-opacity': [
+            'interpolate', ['linear'], ['zoom'],
+            1.5, 0,
+            2.2, 1,
+            5.5, 0.8,
+            7, 0,
+          ],
         },
       },
 
@@ -1067,7 +1129,7 @@ export function buildStyle(): StyleSpecification {
           'text-padding': 4,
         },
         paint: {
-          'text-color': LABEL_COLOR,
+          'text-color': labelColor(),
           // The Halo Rule: every label carries a casing in the ground colour.
           'text-halo-color': token('sea'),
           // A wider, tighter casing on the selected name. The halo stays the
@@ -1085,7 +1147,47 @@ export function buildStyle(): StyleSpecification {
             ['boolean', ['feature-state', 'selected'], false], 0.2,
             0.4,
           ],
-          'text-opacity': REVEAL_AT_ZOOM,
+          'text-opacity': BASE_LABEL_OPACITY,
+        },
+      },
+
+      /**
+       * The one place the reader explicitly asked for must never lose a label
+       * collision.
+       *
+       * Feature state is legal in paint but not in layout or filters, so the
+       * normal label layer cannot make a selected name win placement. This
+       * second layer is filtered dynamically by `main.ts` to one feature and
+       * opts that feature out of collision. `text-ignore-placement` also means
+       * it does not push the surrounding map labels around when it appears.
+       */
+      {
+        id: 'selected-place-label',
+        type: 'symbol',
+        source: 'places',
+        filter: ['==', ['id'], -1],
+        layout: {
+          'text-field': ['get', 'name'],
+          'text-font': LABEL_FONT,
+          'text-size': LABEL_SIZE,
+          'text-transform': [
+            'match', ['get', 'type'], 'City', 'uppercase', 'none',
+          ],
+          'text-letter-spacing': [
+            'match', ['get', 'type'], 'City', 0.09, 0,
+          ],
+          'text-variable-anchor': ['left', 'right', 'top', 'bottom'],
+          'text-radial-offset': 1,
+          'text-justify': 'auto',
+          'text-padding': 4,
+          'text-allow-overlap': true,
+          'text-ignore-placement': true,
+        },
+        paint: {
+          'text-color': token('brass'),
+          'text-halo-color': token('sea'),
+          'text-halo-width': 2.4,
+          'text-halo-blur': 0.2,
         },
       },
     ],
