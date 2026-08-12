@@ -162,7 +162,10 @@ app.innerHTML = `
     <button id="load-retry" type="button">Retry</button>
   </div>
 
-  <div class="hint" id="hint" role="status" aria-live="polite"></div>
+  <div class="notice notice--quiet" id="note" role="status" aria-live="polite" hidden>
+    <span id="note-text"></span>
+    <button id="note-dismiss" type="button" aria-label="Dismiss">Dismiss</button>
+  </div>
 
   <aside class="panel" id="panel" aria-labelledby="panel-title" aria-live="polite" hidden>
     <div class="panel__drag-region" id="panel-drag-region" aria-hidden="true">
@@ -234,10 +237,29 @@ document.addEventListener('pointerdown', (event) => {
 const panel = document.querySelector<HTMLElement>('#panel')!;
 const panelBody = document.querySelector<HTMLElement>('#panel-body')!;
 const panelDragRegion = document.querySelector<HTMLElement>('#panel-drag-region')!;
-const hint = document.querySelector<HTMLElement>('#hint')!;
 const loadNotice = document.querySelector<HTMLElement>('#load-notice')!;
 const loadNoticeText = document.querySelector<HTMLElement>('#load-notice-text')!;
 const loadRetry = document.querySelector<HTMLButtonElement>('#load-retry')!;
+const noteEl = document.querySelector<HTMLElement>('#note')!;
+const noteText = document.querySelector<HTMLElement>('#note-text')!;
+const noteDismiss = document.querySelector<HTMLButtonElement>('#note-dismiss')!;
+
+/**
+ * A message about the request the viewer made, as opposed to a failure of the
+ * atlas itself: a link that resolves to nothing, or a place whose coordinates
+ * were never recorded. These used to be a hint that faded after 4.2s, which
+ * meant the explanation was gone before a slow reader reached it. It persists
+ * until dismissed instead — nothing else on screen says why the map ignored
+ * the URL, so it has to outlast a glance.
+ */
+function note(message: string) {
+  noteText.textContent = message;
+  noteEl.hidden = false;
+}
+
+noteDismiss.addEventListener('click', () => {
+  noteEl.hidden = true;
+});
 const themeButton = document.querySelector<HTMLButtonElement>('#theme-toggle')!;
 
 const places: Place[] = [];
@@ -1069,6 +1091,10 @@ function goTo(target: Target, animate = true, showDetails = true) {
 
   if (!showDetails) closePanel();
 
+  // Arriving anywhere answers whatever the last note was explaining. The
+  // unconfirmed-location note is raised further down, after this clear.
+  noteEl.hidden = true;
+
   const motion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   const fly = (opts: { center: [number, number]; zoom: number }) =>
     animate && !motion ? map.flyTo(opts) : map.jumpTo(opts);
@@ -1083,9 +1109,7 @@ function goTo(target: Target, animate = true, showDetails = true) {
     else if (target.place.props.confirmed) select('place', target.place.id);
     else {
       select(null);
-      hint.textContent = 'Exact location unknown — select its region for context';
-      hint.classList.add('is-visible');
-      setTimeout(() => hint.classList.remove('is-visible'), 4200);
+      note('Exact location unknown — select its region for context');
     }
     writeUrl(target);
   };
@@ -1419,9 +1443,7 @@ function readUrl(): Target | null {
     if (hit) return hit;
     // A slug that resolves to nothing is a stale or mistyped link. Say so
     // rather than silently opening the default view as if nothing was asked.
-    hint.textContent = `No ${kind} called "${slug}"`;
-    hint.classList.add('is-visible');
-    setTimeout(() => hint.classList.remove('is-visible'), 4200);
+    note(`No ${kind} called "${slug}"`);
   }
   return null;
 }
@@ -1496,18 +1518,14 @@ async function initialiseAtlas() {
   searchInput.disabled = true;
   searchInput.setAttribute('aria-busy', 'true');
   loadNotice.hidden = true;
+  noteEl.hidden = true;
 
   try {
     await loadPlaces();
     searchInput.disabled = false;
     searchInput.setAttribute('aria-busy', 'false');
     const target = readUrl();
-    if (!target) {
-      hint.textContent = 'Select a region or settlement';
-      hint.classList.add('is-visible');
-      setTimeout(() => hint.classList.remove('is-visible'), 4200);
-      return;
-    }
+    if (!target) return;
     // goTo defers itself until the style is loaded, so this is safe to call
     // immediately regardless of how far along the map is.
     goTo(target, false);

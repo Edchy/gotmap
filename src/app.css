@@ -103,7 +103,8 @@ body {
 .search__input {
   width: 100%;
   height: 100%;
-  min-height: 2.625rem;
+  /* 2.75rem = 44px, the minimum comfortable touch target. */
+  min-height: 2.75rem;
   padding: 0 var(--sp-3) 0 2.125rem;
   font: var(--text-label);
   color: var(--ink);
@@ -355,6 +356,20 @@ html[data-theme='light'] .theme-toggle__moon {
   box-shadow: var(--shadow-panel);
 }
 
+/*
+ * A remark about the viewer's request, not a failure of the atlas. It sits
+ * where the load notice sits, but the two never coexist: a failed load has no
+ * targets to resolve a link against, so nothing can raise a note.
+ */
+.notice--quiet {
+  color: var(--ink-muted);
+  background: color-mix(in oklab, var(--sea-deep) 92%, transparent);
+}
+
+.notice--quiet #note-text {
+  color: var(--ink);
+}
+
 .notice button {
   min-height: 2.75rem;
   padding: 0 var(--sp-3);
@@ -369,26 +384,6 @@ html[data-theme='light'] .theme-toggle__moon {
 .notice button:hover,
 .notice button:focus-visible {
   color: var(--brass);
-}
-
-/* ---------------------------------------------------------------- hint --- */
-
-.hint {
-  position: absolute;
-  bottom: max(var(--sp-6), env(safe-area-inset-bottom));
-  left: 50%;
-  translate: -50% 0;
-  z-index: var(--z-chrome);
-  font: var(--text-label);
-  color: var(--ink-muted);
-  letter-spacing: 0.04em;
-  opacity: 0;
-  transition: opacity var(--dur-slow) var(--ease-out);
-  pointer-events: none;
-}
-
-.hint.is-visible {
-  opacity: 1;
 }
 
 /* --------------------------------------------------------------- panel --- */
@@ -491,6 +486,7 @@ html[data-theme='light'] {
 
 @media (pointer: coarse) {
   .search__result,
+  .search__input,
   .control-bar__button,
   .credits summary,
   .notice button {
