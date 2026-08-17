@@ -571,14 +571,21 @@ html[data-theme='light'] {
 
 @media (max-width: 40rem) {
   .control-bar {
+    /* Fixed, not absolute: the bar is lifted clear of the on-screen keyboard,
+       and only the viewport-relative box tracks that reliably while iOS
+       rubber-bands the page around a focused field. */
+    position: fixed;
     top: auto;
-    bottom: max(var(--sp-3), env(safe-area-inset-bottom));
+    /* The safe-area inset belongs to the home indicator, which the keyboard
+       covers; only one of the two applies at a time. */
+    bottom: max(var(--sp-3), env(safe-area-inset-bottom), var(--keyboard-inset));
     left: max(var(--sp-3), env(safe-area-inset-left));
-    z-index: var(--z-chrome);
+    z-index: var(--z-focus);
     width: calc(
       100vw - max(var(--sp-3), env(safe-area-inset-left)) -
         max(var(--sp-3), env(safe-area-inset-right))
     );
+    transition: bottom var(--dur-fast) var(--ease-out);
   }
 
   .wordmark {
@@ -614,8 +621,17 @@ html[data-theme='light'] {
   }
 
   .search__results {
-    max-height: min(52dvh, 24rem);
+    /* Whatever the keyboard leaves, less the bar itself and a margin, so the
+       list never grows past the top of the screen or under the keyboard. */
+    max-height: min(
+      24rem,
+      calc(100dvh - var(--keyboard-inset) - 2.75rem - var(--sp-6) - var(--sp-5))
+    );
     overflow-y: auto;
+    /* Claim vertical drags for the list; the map must not pan beneath it. */
+    touch-action: pan-y;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
   }
 
   .search__input {

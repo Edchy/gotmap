@@ -47,6 +47,10 @@
   --z-chrome: 10;
   --z-panel: 20;
   --z-focus: 30;
+
+  /* Height of the on-screen keyboard, published by the visual-viewport
+     listener in main.ts. Zero whenever no keyboard is up. */
+  --keyboard-inset: 0px;
 }
 
 @media (prefers-reduced-motion: reduce) {

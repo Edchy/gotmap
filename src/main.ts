@@ -1749,19 +1749,90 @@ searchInput.addEventListener('keydown', (e) => {
   }
 });
 
+// A touch that begins on a result is ambiguous: it could be a tap or the start
+// of a scroll through a list taller than the sheet. Committing on pointerdown
+// made every scroll attempt a navigation, so the press is only remembered here
+// and resolved on pointerup, after the gesture has revealed which it was.
+let pressed: { index: number; x: number; y: number; id: number } | null = null;
+
+/** Past this much travel the gesture was a scroll, not a tap. */
+const TAP_SLOP = 10;
+
 searchResults.addEventListener('pointerdown', (e) => {
-  // pointerdown, not click: blur would tear the list down before click fires,
-  // and pointer events cover touch, pen and mouse through the same path.
   const li = (e.target as HTMLElement).closest('.search__result');
   if (!li) return;
-  e.preventDefault();
-  commit([...searchResults.children].indexOf(li));
+  // Mouse and pen resolve on the press, as they always have: they cannot
+  // scroll by dragging, and preventing default keeps the input focused.
+  if (e.pointerType !== 'touch') {
+    e.preventDefault();
+    commit([...searchResults.children].indexOf(li));
+    return;
+  }
+  pressed = {
+    index: [...searchResults.children].indexOf(li),
+    x: e.clientX,
+    y: e.clientY,
+    id: e.pointerId,
+  };
 });
 
-searchInput.addEventListener('blur', () => {
-  // Deferred so a mousedown on a result is not cancelled by the blur.
-  setTimeout(closeResults, 120);
+searchResults.addEventListener('pointermove', (e) => {
+  if (!pressed || e.pointerId !== pressed.id) return;
+  if (Math.hypot(e.clientX - pressed.x, e.clientY - pressed.y) > TAP_SLOP) {
+    pressed = null;
+  }
 });
+
+searchResults.addEventListener('pointerup', (e) => {
+  if (!pressed || e.pointerId !== pressed.id) return;
+  const { index } = pressed;
+  pressed = null;
+  e.preventDefault();
+  commit(index);
+});
+
+for (const type of ['pointercancel', 'pointerleave'] as const) {
+  searchResults.addEventListener(type, () => {
+    pressed = null;
+  });
+}
+
+searchInput.addEventListener('blur', () => {
+  // Deferred so a press on a result is not cancelled by the blur. A touch
+  // scroll blurs the field on some browsers, so an in-flight press holds the
+  // list open until the gesture finishes.
+  setTimeout(() => {
+    if (!pressed) closeResults();
+  }, 120);
+});
+
+/* ------------------------------------------------- keyboard insets --- */
+/*
+ * On a phone the control bar sits at the bottom of the *layout* viewport,
+ * which the on-screen keyboard does not shrink. Focusing the field therefore
+ * buried the bar — and the results list anchored to it — behind the keyboard.
+ * The visual viewport does report the keyboard, so its occluded height is
+ * published as a custom property the mobile layout lifts the bar by.
+ */
+const viewport = window.visualViewport;
+
+if (viewport) {
+  const syncKeyboardInset = () => {
+    // Everything below the visual viewport is occluded: keyboard, and on iOS
+    // the browser's own accessory bar. Page scroll offset is subtracted so a
+    // scrolled-down document does not read as a permanent inset.
+    const occluded =
+      window.innerHeight - viewport.height - (viewport.offsetTop + viewport.pageTop);
+    document.documentElement.style.setProperty(
+      '--keyboard-inset',
+      `${Math.max(0, Math.round(occluded))}px`,
+    );
+  };
+
+  viewport.addEventListener('resize', syncKeyboardInset);
+  viewport.addEventListener('scroll', syncKeyboardInset);
+  syncKeyboardInset();
+}
 
 document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape' && !panel.hidden) closePanel(true);
