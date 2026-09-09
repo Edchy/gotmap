@@ -23,7 +23,7 @@
     "vite": "^8.2.1"
   },
   "dependencies": {
-    "maplibre-gl": "^5.24.0"
+    "maplibre-gl": "^6.4.1"
   },
   "private": true
 }
